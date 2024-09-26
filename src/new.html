@@ -1,0 +1,347 @@
+ <!-- GeoChart generated in R 3.4.2 by googleVis 0.6.2 package -->
+ <!-- Thu Jun 28 07:27:57 2018 -->
+ 
+ 
+ <!-- jsHeader -->
+ <script type="text/javascript">
+  
+ // jsData 
+ function gvisDataGeoChartID12f3f099d () {
+ var data = new google.visualization.DataTable();
+ var datajson =
+ [
+  [
+ "US-AK",
+ "Alaska- Defaulters:151",
+ 0.22
+ ],
+ [
+ "US-AL",
+ "Alabama- Defaulters:993",
+ 1.47
+ ],
+ [
+ "US-AR",
+ "Arkansas- Defaulters:507",
+ 0.75
+ ],
+ [
+ "US-AZ",
+ "Arizona- Defaulters:1581",
+ 2.34
+ ],
+ [
+ "US-CA",
+ "California- Defaulters:10518",
+ 15.6
+ ],
+ [
+ "US-CO",
+ "Colorado- Defaulters:1187",
+ 1.76
+ ],
+ [
+ "US-CT",
+ "Connecticut- Defaulters:922",
+ 1.37
+ ],
+ [
+ "US-DC",
+ "DistrictofColumbia- Defaulters:118",
+ 0.17
+ ],
+ [
+ "US-DE",
+ "Delaware- Defaulters:189",
+ 0.28
+ ],
+ [
+ "US-FL",
+ "Florida- Defaulters:5148",
+ 7.63
+ ],
+ [
+ "US-GA",
+ "Georgia- Defaulters:2061",
+ 3.06
+ ],
+ [
+ "US-HI",
+ "Hawaii- Defaulters:427",
+ 0.63
+ ],
+ [
+ "US-IA",
+ "Iowa- Defaulters:3",
+ 0
+ ],
+ [
+ "US-ID",
+ "Idaho- Defaulters:1",
+ 0
+ ],
+ [
+ "US-IL",
+ "Illinois- Defaulters:2258",
+ 3.35
+ ],
+ [
+ "US-IN",
+ "Indiana- Defaulters:961",
+ 1.43
+ ],
+ [
+ "US-KS",
+ "Kansas- Defaulters:491",
+ 0.73
+ ],
+ [
+ "US-KY",
+ "Kentucky- Defaulters:604",
+ 0.9
+ ],
+ [
+ "US-LA",
+ "Louisiana- Defaulters:855",
+ 1.27
+ ],
+ [
+ "US-MA",
+ "Massachusetts- Defaulters:1523",
+ 2.26
+ ],
+ [
+ "US-MD",
+ "Maryland- Defaulters:1683",
+ 2.5
+ ],
+ [
+ "US-ME",
+ "Maine- Defaulters:1",
+ 0
+ ],
+ [
+ "US-MI",
+ "Michigan- Defaulters:1715",
+ 2.54
+ ],
+ [
+ "US-MN",
+ "Minnesota- Defaulters:1183",
+ 1.75
+ ],
+ [
+ "US-MO",
+ "Missouri- Defaulters:1084",
+ 1.61
+ ],
+ [
+ "US-MS",
+ "Mississippi- Defaulters:201",
+ 0.3
+ ],
+ [
+ "US-MT",
+ "Montana- Defaulters:167",
+ 0.25
+ ],
+ [
+ "US-NC",
+ "NorthCarolina- Defaulters:1971",
+ 2.92
+ ],
+ [
+ "US-ND",
+ "NorthDakota- Defaulters:4",
+ 0.01
+ ],
+ [
+ "US-NE",
+ "Nebraska- Defaulters:24",
+ 0.04
+ ],
+ [
+ "US-NH",
+ "NewHampshire- Defaulters:245",
+ 0.36
+ ],
+ [
+ "US-NJ",
+ "NewJersey- Defaulters:2682",
+ 3.98
+ ],
+ [
+ "US-NM",
+ "NewMexico- Defaulters:402",
+ 0.6
+ ],
+ [
+ "US-NV",
+ "Nevada- Defaulters:1173",
+ 1.74
+ ],
+ [
+ "US-NY",
+ "NewYork- Defaulters:6289",
+ 9.33
+ ],
+ [
+ "US-OH",
+ "Ohio- Defaulters:2135",
+ 3.17
+ ],
+ [
+ "US-OK",
+ "Oklahoma- Defaulters:665",
+ 0.99
+ ],
+ [
+ "US-OR",
+ "Oregon- Defaulters:776",
+ 1.15
+ ],
+ [
+ "US-PA",
+ "Pennsylvania- Defaulters:2398",
+ 3.56
+ ],
+ [
+ "US-RI",
+ "RhodeIsland- Defaulters:292",
+ 0.43
+ ],
+ [
+ "US-SC",
+ "SouthCarolina- Defaulters:678",
+ 1.01
+ ],
+ [
+ "US-SD",
+ "SouthDakota- Defaulters:141",
+ 0.21
+ ],
+ [
+ "US-TN",
+ "Tennessee- Defaulters:923",
+ 1.37
+ ],
+ [
+ "US-TX",
+ "Texas- Defaulters:4759",
+ 7.06
+ ],
+ [
+ "US-UT",
+ "Utah- Defaulters:507",
+ 0.75
+ ],
+ [
+ "US-VA",
+ "Virginia- Defaulters:2167",
+ 3.21
+ ],
+ [
+ "US-VT",
+ "Vermont- Defaulters:98",
+ 0.15
+ ],
+ [
+ "US-WA",
+ "Washington- Defaulters:1408",
+ 2.09
+ ],
+ [
+ "US-WI",
+ "Wisconsin- Defaulters:779",
+ 1.16
+ ],
+ [
+ "US-WV",
+ "WestVirginia- Defaulters:264",
+ 0.39
+ ],
+ [
+ "US-WY",
+ "Wyoming- Defaulters:117",
+ 0.17
+ ] 
+ ];
+ data.addColumn('string','state_code');
+ data.addColumn('string','map_hover_string');
+ data.addColumn('number','defaulter_perc_within_US');
+ data.addRows(datajson);
+ return(data);
+ }
+  
+ // jsDrawChart
+ function drawChartGeoChartID12f3f099d() {
+ var data = gvisDataGeoChartID12f3f099d();
+ var options = {};
+ options["width"] = 556;
+ options["height"] = 347;
+ options["region"] = "US";
+ options["displayMode"] = "region";
+ options["resolution"] = "provinces";
+ options["defaultColor"] = "red";
+ options["backgroundColor"] = "66c2ff";
+ options["colorAxis"] = {colors: ['#ff9999','#e60000']};
+ 
+ 
+     var chart = new google.visualization.GeoChart(
+     document.getElementById('GeoChartID12f3f099d')
+     );
+     chart.draw(data,options);
+     
+ 
+ }
+   
+  
+ // jsDisplayChart
+ (function() {
+ var pkgs = window.__gvisPackages = window.__gvisPackages || [];
+ var callbacks = window.__gvisCallbacks = window.__gvisCallbacks || [];
+ var chartid = "geochart";
+   
+ // Manually see if chartid is in pkgs (not all browsers support Array.indexOf)
+ var i, newPackage = true;
+ for (i = 0; newPackage && i < pkgs.length; i++) {
+ if (pkgs[i] === chartid)
+ newPackage = false;
+ }
+ if (newPackage)
+   pkgs.push(chartid);
+   
+ // Add the drawChart function to the global list of callbacks
+ callbacks.push(drawChartGeoChartID12f3f099d);
+ })();
+ function displayChartGeoChartID12f3f099d() {
+   var pkgs = window.__gvisPackages = window.__gvisPackages || [];
+   var callbacks = window.__gvisCallbacks = window.__gvisCallbacks || [];
+   window.clearTimeout(window.__gvisLoad);
+   // The timeout is set to 100 because otherwise the container div we are
+   // targeting might not be part of the document yet
+   window.__gvisLoad = setTimeout(function() {
+   var pkgCount = pkgs.length;
+   google.load("visualization", "1", { packages:pkgs, callback: function() {
+   if (pkgCount != pkgs.length) {
+   // Race condition where another setTimeout call snuck in after us; if
+   // that call added a package, we must not shift its callback
+   return;
+ }
+ while (callbacks.length > 0)
+ callbacks.shift()();
+ } });
+ }, 100);
+ }
+  
+ // jsFooter
+ </script>
+  
+ <!-- jsChart -->  
+ <script type="text/javascript" src="https://www.google.com/jsapi?callback=displayChartGeoChartID12f3f099d"></script>
+  
+ <!-- divChart -->
+   
+ <div id="GeoChartID12f3f099d" 
+   style="width: 556; height: 347;">
+ </div>
