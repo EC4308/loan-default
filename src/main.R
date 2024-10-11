@@ -28,5 +28,37 @@ lc_2016_2017_clean <- lc_2016_2017 %>% select(-all_of(diff_cols_2))
 # Now, bind the rows together after ensuring they have the same columns
 combined_data <- bind_rows(lc_loan_clean, lc_2016_2017_clean)
 
+
+
 # View the combined dataset
 glimpse(combined_data)
+
+## Wan Ting + ZH
+# Index loan status to 0 = Fully paid + Current, 1 = Late + Charged Off + Late  + Grace period + Default
+# Stratify the data based on the loan_status and get ~ 50,000 accordingly
+# Rdm suggestion, compare the direct pulling of 50k data points vs stratified (Prof might be interested)
+# Label the data
+
+
+## Brandon + LX
+# Include Fed data Last payment date + 3 months
+
+## YH + Grab anyone for help
+# Index term to 0 or 1
+# Drop grade Adds bias
+# Index emp_length -> <1 year = 0
+# Replace NA with 0
+
+## Once all is done
+# 70/30 Data split
+# Save CSV file as combined_data_cleaned.csv
+
+# Future plans
+# EDA
+# Scale the data for the relevant regressions
+# If the output is a probability, then >0.5 = bad loan, else good loan
+
+# Models to be use
+# 1. Benchmark model = Decision Tree
+
+
