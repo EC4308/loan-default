@@ -1,0 +1,124 @@
+---
+title: "EC4308 Project (Lending Club)"
+author: "Brandon, LX, WT, YH, ZH"
+date: "2024-10-11"
+output: html_document
+---
+
+## Initial setup
+```{r setup, include=FALSE}
+library(readr)
+library(tidyverse)
+
+lc_loan <- read_csv("data/lc_loan.csv")
+lc_2016_2017 <- read.csv("data/lc_2016_2017.csv")
+```
+
+### Analysing the head of the data
+```{r cars}
+head(lc_loan)
+```
+
+## Data Cleaning
+### Observe the difference in columns
+```{r}
+# Get the column names from both dataframes
+lc_loan_cols <- colnames(lc_loan)
+lc_2016_2017_cols <- colnames(lc_2016_2017)
+
+# Compare the columns to find the differences
+diff_cols <- setdiff(lc_loan_cols, lc_2016_2017_cols)
+diff_cols_2 <- setdiff(lc_2016_2017_cols, lc_loan_cols)
+
+# Display the differences
+cat("Columns in 'lc_loan' but not in 'lc_2016_2017':", diff_cols, "\n")
+cat("Columns in 'lc_2016_2017' but not in 'lc_loan':", diff_cols_2, "\n")
+```
+
+### Remove columns that are not common between the two dataframes
+```{r}
+lc_loan_clean <- lc_loan %>% select(-all_of(diff_cols))
+lc_2016_2017_clean <- lc_2016_2017 %>% select(-all_of(diff_cols_2))
+combined_data <- bind_rows(lc_loan_clean, lc_2016_2017_clean)
+glimpse(combined_data)
+```
+
+## WT + ZH
+## Index loan status to 0 = Fully paid + Current, 1 = Late + Charged Off + Late  + Grace period + Default
+### Convert loan_status to a factor (categorical variable)
+```{r}
+combined_data <- combined_data %>%
+  mutate(loan_status = as.factor(loan_status))
+table(combined_data$loan_status)
+```
+
+
+### Print out the possible levels of loan_status
+```{r}
+cat("Possible loan_status categories:\n")
+print(levels(combined_data$loan_status))
+```
+
+### Now convert it to binary 
+```{r}
+combined_data <- combined_data %>%
+  mutate(
+    loan_status_bin = case_when(
+      loan_status %in% c("Current", "Fully Paid", "Does not meet the credit policy. Status:Fully Paid") ~ 0,
+      TRUE ~ 1  # Everything else will be 1
+    )
+  )
+
+head(combined_data)
+```
+
+### Check how many 0s and 1s in the new binary column
+```{r}
+table(combined_data$loan_status_bin)
+```
+~ 8.5% are 1
+
+### Stratify the data based on the loan_status and get ~ 50,000 accordingly
+#### Rdm suggestion, compare the direct pulling of 50k data points vs stratified (Prof might be interested)
+```{r}
+# Set the seed for reproducibility
+set.seed(4308)
+
+# Randomly sample 50,000 rows from the dataset
+random_sampled_data <- combined_data %>%
+  sample_n(size = 50000)
+
+# Check the distribution of loan_status_bin in the sampled data
+loan_status_proportion <- table(random_sampled_data$loan_status_bin)
+
+# Display the proportions
+loan_status_proportion
+```
+~8.4% are 1 as well, nice.
+
+
+### Label the data
+
+
+# Brandon + LX
+## Include Fed data Last payment date + 3 months
+
+# YH + Grab anyone for help
+## Index term to 0 or 1
+## Drop grade Adds bias
+## Index emp_length -> <1 year = 0
+## Replace NA with 0
+
+# Once all is done
+## 70/30 Data split
+## Save CSV file as combined_data_cleaned.csv
+
+# Future plans
+## EDA
+## Scale the data for the relevant regressions
+## If the output is a probability, then >0.5 = bad loan, else good loan
+
+# Models to be use
+## 1. Benchmark model = Decision Tree
+
+
