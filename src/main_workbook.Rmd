@@ -10,8 +10,8 @@ output: html_document
 library(readr)
 library(tidyverse)
 
-lc_loan <- read_csv("data/lc_loan.csv")
-lc_2016_2017 <- read.csv("data/lc_2016_2017.csv")
+lc_loan <- read_csv("../data/lc_loan.csv")
+lc_2016_2017 <- read.csv("../data/lc_2016_2017.csv")
 ```
 
 ### Analysing the head of the data
@@ -59,12 +59,19 @@ cat("Possible loan_status categories:\n")
 print(levels(combined_data$loan_status))
 ```
 
+### Remove "Current" as it adds no value to our analytics
+```{r}
+combined_data <- combined_data %>%
+  filter(loan_status != "Current")
+```
+
+
 ### Now convert it to binary 
 ```{r}
 combined_data <- combined_data %>%
   mutate(
     loan_status_bin = case_when(
-      loan_status %in% c("Current", "Fully Paid", "Does not meet the credit policy. Status:Fully Paid") ~ 0,
+      loan_status %in% c("Fully Paid", "Does not meet the credit policy. Status:Fully Paid") ~ 0,
       TRUE ~ 1  # Everything else will be 1
     )
   )
@@ -74,12 +81,19 @@ head(combined_data)
 
 ### Check how many 0s and 1s in the new binary column
 ```{r}
-table(combined_data$loan_status_bin)
+loan_status_distribution <- table(combined_data$loan_status_bin)
+print(loan_status_distribution)
+
+paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distribution)) * 100
+
+cat("Percentage of loans that are paid off in the full data set:", round(paid_off_percentage, 2), "%\n")
+
 ```
 ~ 8.5% are 1
 
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
-#### Rdm suggestion, compare the direct pulling of 50k data points vs stratified (Prof might be interested)
+Random suggestion, compare the direct pulling of 50k data points vs stratified
+#### Random pulling
 ```{r}
 # Set the seed for reproducibility
 set.seed(4308)
@@ -88,17 +102,19 @@ set.seed(4308)
 random_sampled_data <- combined_data %>%
   sample_n(size = 50000)
 
-# Check the distribution of loan_status_bin in the sampled data
-loan_status_proportion <- table(random_sampled_data$loan_status_bin)
+loan_status_distribution <- table(random_sampled_data$loan_status_bin)
+print(loan_status_distribution)
 
-# Display the proportions
-loan_status_proportion
+paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distribution)) * 100
+
+cat("Percentage of loans that are paid off, when we do a random sample of 50,000:", round(paid_off_percentage, 2), "%\n")
 ```
-~8.4% are 1 as well, nice.
+Quite accurate as compared to the real world proportions. But by doing a random sample, we might not have enough readings for 1 as 30% is quite a small amount.
 
+#### Stratified
+Maybe we can do a 50/50 stratification to get a better sensing on real data?
 
 ### Label the data
-
 
 # Brandon + LX
 ## Include Fed data Last payment date + 3 months
