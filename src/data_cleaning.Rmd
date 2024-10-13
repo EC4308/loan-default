@@ -111,6 +111,24 @@ cat("Percentage of loans that are paid off in the full data set:", round(paid_of
 
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
 Random suggestion, compare the direct pulling of 50k data points vs stratified
+```{r}
+## Stratify data based on loan status
+# Set seed for reproducibility
+set.seed(42)
+
+# Stratified Sampling by 'loan status'
+strat_cols <- c("loan_status")
+
+# Perform the stratified sampling for training set (20%)
+train_data <- combined_data %>%
+  group_by(across(all_of(strat_cols))) %>%
+  sample_frac(0.2) %>% # Adjust the fraction as needed for training set
+  ungroup()
+
+# # Remaining data for test sets
+test_data <- anti_join(combined_data, train_data)
+```
+
 
 #### Random pulling
 ```{r}
@@ -132,6 +150,23 @@ Quite accurate as compared to the real world proportions. But by doing a random 
 
 #### Stratified
 Maybe we can do a 50/50 stratification to get a better sensing on real data?
+```{r}
+## Random 50/50 stratification 
+set.seed(123) 
+
+combined_data <- combined_data %>%
+  mutate(group = sample(c(1, 2), n(), replace = TRUE))
+
+group_1 <- combined_data %>% filter(group == 1)
+group_2 <- combined_data %>% filter(group == 2)
+
+# Double-check 50/50 split
+nrow(group_1)
+nrow(group_2)
+
+```
+
+
 
 ### Label the data
 
