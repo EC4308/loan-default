@@ -10,7 +10,6 @@ output: html_document
 library(readr)
 library(tidyverse)
 library(jsonlite)
-
 ```
 
 ### Convert all the csv files to RDS to save space
@@ -22,14 +21,13 @@ library(jsonlite)
 # Step 2: Save the loaded data as RDS files
 #saveRDS(lc_loan, "../data/lc_loan.rds")
 #saveRDS(lc_2016_2017, "../data/lc_2016_2017.rds")
-
 ```
+
 ## Read the RDS Files
 ```{r}
 lc_loan <- readRDS("../data/lc_loan.rds")
 lc_2016_2017 <- readRDS("../data/lc_2016_2017.rds")
 ```
-
 
 ### Analysing the head of the data
 ```{r cars}
@@ -69,7 +67,6 @@ combined_data <- combined_data %>%
 table(combined_data$loan_status)
 ```
 
-
 ### Print out the possible levels of loan_status
 ```{r}
 cat("Possible loan_status categories:\n")
@@ -81,7 +78,6 @@ print(levels(combined_data$loan_status))
 combined_data <- combined_data %>%
   filter(loan_status != "Current")
 ```
-
 
 ### Now convert it to binary 
 ```{r}
@@ -108,7 +104,6 @@ cat("Percentage of loans that are paid off in the full data set:", round(paid_of
 ```
 ~ 8.5% are 1
 
-
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
 Random suggestion, compare the direct pulling of 50k data points vs stratified
 ```{r}
@@ -128,7 +123,6 @@ train_data <- combined_data %>%
 # # Remaining data for test sets
 test_data <- anti_join(combined_data, train_data)
 ```
-
 
 #### Random pulling
 ```{r}
@@ -163,15 +157,18 @@ group_2 <- combined_data %>% filter(group == 2)
 # Double-check 50/50 split
 nrow(group_1)
 nrow(group_2)
-
 ```
-
-
 
 ### Label the data
 
 # Brandon + LX
-## Include Fed data Last payment date + 3 months
+## FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks (Last payment date + 3 months)
+```{r}
+delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
+
+delinquency_rate <- delinquency_rate %>%
+  rename("delinquency_rate" = "DRCLACBS")
+```
 
 # YH + Grab anyone for help
 ## Index term to 0 or 1
