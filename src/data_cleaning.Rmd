@@ -10,6 +10,8 @@ output: html_document
 library(readr)
 library(tidyverse)
 library(jsonlite)
+library(lubridate)
+library(zoo)
 ```
 
 ### Convert all the csv files to RDS to save space
@@ -102,6 +104,21 @@ paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distributi
 cat("Percentage of loans that are paid off in the full data set:", round(paid_off_percentage, 2), "%\n")
 
 ```
+# Brandon + LX
+## FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks (Last payment date + 3 months)
+```{r}
+combined_data %>%
+  mutate(last_pymnt_d = if_else(is.na(last_pymnt_d), issue_d, last_pymnt_d),  # Replace NA with issue_d so that those that did not pay a single payment has a date to merge with the delinquency data 
+         quarter = as.yearqtr(dmy(paste("01", last_pymnt_d, sep = "-")))) -> combined_data
+
+delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
+delinquency_rate <- delinquency_rate %>%
+  rename("delinquency_rate" = "DRCLACBS") %>%
+  mutate(DATE = as.yearqtr(ymd(DATE)))
+
+combined_data %>% 
+  left_join(delinquency_rate, by = c("quarter" = "DATE")) -> combined_data
+```
 
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
 Random suggestion, compare the direct pulling of 50k data points vs stratified
@@ -162,24 +179,6 @@ nrow(group_2)
 Run these into models, and see which has lower classification error
 
 ### Label the data
-
-# Brandon + LX
-## FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks (Last payment date + 3 months)
-```{r}
-library(lubridate)
-
-# Assuming your data is in a dataframe called combined_data
-combined_data$last_pymnt_d <- dmy(paste("01", combined_data$last_pymnt_d, sep = "-"))
-
-delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
-
-delinquency_rate <- delinquency_rate %>%
-  rename("delinquency_rate" = "DRCLACBS") %>%
-  mutate(DATE = ymd(DATE))
-
-combined_data %>% 
-  left_join(delinquency_rate, by = c("last_pymnt_d" = "DATE")) -> combined_data
-```
 
 # YH + Grab anyone for help
 ```{r recode-employment-length}
