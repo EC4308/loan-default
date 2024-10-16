@@ -102,7 +102,6 @@ paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distributi
 cat("Percentage of loans that are paid off in the full data set:", round(paid_off_percentage, 2), "%\n")
 
 ```
-~ 8.5% are 1
 
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
 Random suggestion, compare the direct pulling of 50k data points vs stratified
@@ -158,6 +157,9 @@ group_2 <- combined_data %>% filter(group == 2)
 nrow(group_1)
 nrow(group_2)
 ```
+1. Strat (50/50)
+2. Random
+Run these into models, and see which has lower classification error
 
 ### Label the data
 
@@ -225,6 +227,9 @@ combined_data = subset(combined_data, select = -c(grade, sub_grade))
 ## If the output is a probability, then >0.5 = bad loan, else good loan
 
 # Models to be use
-## 1. Benchmark model = Decision Tree
+## 1. Benchmark model = Decision Tree + Logit
+## 2. Random Forest
+## 3. XGBoost
+## 4. Ridge Classifier
 
 
