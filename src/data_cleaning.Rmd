@@ -164,10 +164,19 @@ nrow(group_2)
 # Brandon + LX
 ## FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks (Last payment date + 3 months)
 ```{r}
+library(lubridate)
+
+# Assuming your data is in a dataframe called combined_data
+combined_data$last_pymnt_d <- dmy(paste("01", combined_data$last_pymnt_d, sep = "-"))
+
 delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
 
 delinquency_rate <- delinquency_rate %>%
-  rename("delinquency_rate" = "DRCLACBS")
+  rename("delinquency_rate" = "DRCLACBS") %>%
+  mutate(DATE = ymd(DATE))
+
+combined_data %>% 
+  left_join(delinquency_rate, by = c("last_pymnt_d" = "DATE")) -> combined_data
 ```
 
 # YH + Grab anyone for help
