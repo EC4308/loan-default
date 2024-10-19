@@ -209,9 +209,30 @@ combined_data = combined_data %>%
   ))
 ```
 
-```{r remove-LC-grade}
+Before saving the file, we need to remove texts that will cause our models to fail.
+Also remove loan status, it is perfectly collinear to loan_status_bin
+```{r remove-LC-grade-and-descriptive-columns}
 # As the loan grade is assigned by and exclusive to LC, it can introduce bias in this dataset
-combined_data = subset(combined_data, select = -c(grade, sub_grade))
+combined_data = subset(combined_data, select = -c(grade, sub_grade, desc, title, emp_title, zip_code, loan_status))
+```
+
+Final cleaning of some data
+```{r}
+combined_data <- combined_data %>%
+  mutate(
+    # Convert earliest_cr_line to a date format
+    earliest_cr_line = paste0("01-", earliest_cr_line), 
+    earliest_cr_line = dmy(earliest_cr_line),
+    
+    # Convert last_credit_pull_d to a date format
+    last_credit_pull_d = paste0("01-", last_credit_pull_d),
+    last_credit_pull_d = dmy(last_credit_pull_d),
+    
+    next_pymnt_d = paste0("01-", next_pymnt_d),  
+    next_pymnt_d = dmy(next_pymnt_d) 
+
+  )
+
 ```
 
 ```{r save-cleaned-data-as-rds}

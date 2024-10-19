@@ -9,11 +9,69 @@ output: html_document
 ```{r setup, include=FALSE}
 library(readr)
 library(tidyverse)
-library(readr)
-library(tidyverse)
 library(jsonlite)
 library(lubridate)
 library(zoo)
+library(dplyr)
+library(rpart)
+library(rpart.plot)
 
 data <- readRDS("../data/combined_data.rds")
 ```
+
+## Training/Test Split
+```{r}
+# Set seed
+set.seed(123)
+
+n <- nrow(data)  
+
+# Define the proportion for each set
+train_ratio <- 0.6  # 60% for training
+validation_ratio <- 0.2  # 20% for validation
+test_ratio <- 0.2  # 20% for testing
+
+train_indices <- sample(seq_len(n), size = train_ratio * n)
+remaining_indices <- setdiff(seq_len(n), train_indices)
+
+validation_indices <- sample(remaining_indices, size = validation_ratio * n)
+test_indices <- setdiff(remaining_indices, validation_indices)
+
+train_data <- data[train_indices, ]
+validation_data <- data[validation_indices, ]
+test_data <- data[test_indices, ]
+
+#Check the sizes of each set
+cat("Train size: ", nrow(train_data), "\n")
+cat("Validation size: ", nrow(validation_data), "\n")
+cat("Test size: ", nrow(test_data), "\n")
+
+```
+
+## Baseline model - Decision tree with depth 7
+### Creating the tree
+```{r}
+baseline_tree <- rpart(loan_status_bin ~., 
+                       data = train_data, 
+                       method = "class", 
+                       control = rpart.control(maxdepth = 7))
+
+```
+
+### Summary of the tree
+```{r}
+rpart.plot(baseline_tree)
+```
+### Predict on test data
+```{r}
+predictions <- predict(baseline_tree, test_data, type = "class")
+```
+
+### Confusion Matrix
+```{r}
+confusion_matrix <- table(test_data$loan_status_bin, predictions)
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+confusion_matrix
+accuracy
+```
+
