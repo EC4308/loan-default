@@ -214,6 +214,9 @@ combined_data = combined_data %>%
 combined_data = subset(combined_data, select = -c(grade, sub_grade))
 ```
 
+```{r save-cleaned-data-as-rds}
+write("combined_data", file = "../data/combined_data.rds")
+```
 ## Index term to 0 or 1 -> To do before ML part with encoder (e.g. one-hot encoder)
 
 # Once all is done
