@@ -12,10 +12,12 @@ library(tidyverse)
 library(jsonlite)
 library(lubridate)
 library(zoo)
+library(ggcorrplot)
 ```
 
-### Convert all the csv files to RDS to save space
-```{r}
+### Convert all the csv files to RDS
+Very crucial step. Original file size was around 200 MB and 400 MB each. This meant we needed to use GIT LFS, which was unfeasable as we did not have funding to do so. We determined that RDS was a much more efficient way to save the data. 
+```{r save-rds}
 # Step 1: Load the CSV files
 #lc_loan <- read_csv("../data/lc_loan.csv")
 #lc_2016_2017 <- read_csv("../data/lc_2016_2017.csv")
@@ -24,15 +26,16 @@ library(zoo)
 #saveRDS(lc_loan, "../data/lc_loan.rds")
 #saveRDS(lc_2016_2017, "../data/lc_2016_2017.rds")
 ```
+After saving the data as RDS, we noticed that each data was less than 100 MB, meaning that we did not need to use GIT LFS
 
-## Read the RDS Files
-```{r}
+### Read the RDS Files
+```{r read-rds}
 lc_loan <- readRDS("../data/lc_loan.rds")
 lc_2016_2017 <- readRDS("../data/lc_2016_2017.rds")
 ```
 
 ### Analysing the head of the data
-```{r cars}
+```{r head}
 head(lc_loan)
 ```
 
@@ -53,16 +56,18 @@ cat("Columns in 'lc_2016_2017' but not in 'lc_loan':", diff_cols_2, "\n")
 ```
 
 ### Remove columns that are not common between the two dataframes
-```{r}
+So there will be a clean horizontal join between all the data points. A sign of a good horizontal join will be that there is no _x and _y suffix.
+```{r echo=FALSE}
 lc_loan_clean <- lc_loan %>% select(-all_of(diff_cols))
 lc_2016_2017_clean <- lc_2016_2017 %>% select(-all_of(diff_cols_2))
 combined_data <- bind_rows(lc_loan_clean, lc_2016_2017_clean)
 glimpse(combined_data)
 ```
+In the join, there is no _x and _y, meaning that it was a clean join.
 
-## WT + ZH
-## Index loan status to 0 = Fully paid + Current, 1 = Late + Charged Off + Late  + Grace period + Default
+
 ### Convert loan_status to a factor (categorical variable)
+Helps with the data analytics
 ```{r}
 combined_data <- combined_data %>%
   mutate(loan_status = as.factor(loan_status))
@@ -165,41 +170,39 @@ Maybe we can do a 50/50 stratification to get a better sensing on real data?
 set.seed(123) 
 
 combined_data <- combined_data %>%
-  mutate(group = sample(c(1, 2), n(), replace = TRUE))
+  group_by(loan_status_bin) %>%
+  sample_n(size = 25000, replace = TRUE)  # 50% from each class, adjust size as needed
 
-group_1 <- combined_data %>% filter(group == 1)
-group_2 <- combined_data %>% filter(group == 2)
-
-# Double-check 50/50 split
-nrow(group_1)
-nrow(group_2)
+# Check distribution
+table(combined_data$loan_status_bin)
 ```
 1. Strat (50/50)
 2. Random
 Run these into models, and see which has lower classification error
 
-### Label the data
+[ZH] I think we should just go with 50/50 stratification, because 30% is quite an underrepresented value.
 
-# YH + Grab anyone for help
+## Reformatting the variables
+### Employment length
+Convert employment length to an ordered categorical data
 ```{r recode-employment-length}
-combined_data %>%
-  ggplot(aes(x=emp_length)) +
-  geom_bar(fill='steelblue') +
-  theme_minimal() + 
-  labs(x='Employment Length', y='Number of Loans', title='Distribution of Employment Length')
-
-# Encode "< 1 year" and missing values as 0, "10+ years" as 10
-combined_data = combined_data %>%
+# Encode "< 1 year" and missing values as 0, "10+ years" as ">10"
+combined_data <- combined_data %>%
   mutate(emp_length = case_when(
-    emp_length == '< 1 year' ~ 0,
-    emp_length == 'n/a' ~ 0,
-    is.na(emp_length) ~ 0,
-    emp_length == '10+ years' ~ 10,
-    TRUE ~ as.numeric(gsub(" years?$", "", emp_length))
+    emp_length == '< 1 year' ~ "0",
+    emp_length == 'n/a' ~ "0",
+    is.na(emp_length) ~ "0",
+    emp_length == '10+ years' ~ ">=10",  # Encode 10+ years as ">10"
+    TRUE ~ gsub(" years?$", "", emp_length)  # Remove "year" or "years" from other values
   ))
-```
-We can see that most of the borrowers have been employed for more than 10 years. As a preliminary cleaning step, we can remove the trailing " year" or " years" in the category name, as well as encode the "< 1 year" or missing values as 0. After we conduct our EDA, we can consider binning the `emp_length` column, for example 0-3 years, 4-7 years etc.
 
+# Convert emp_length to an ordered factor, ensuring ">10" is placed last
+combined_data <- combined_data %>%
+  mutate(emp_length = factor(emp_length, levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ">=10")))
+```
+
+### Verification status
+Make verification status as boolean data, with 1 being verified and 0 being otherwise.
 ```{r recode-verification-status}
 # Combine 'Source Verified' and 'Verified' to a single 'Verified' category
 combined_data = combined_data %>%
@@ -209,53 +212,175 @@ combined_data = combined_data %>%
   ))
 ```
 
-Before saving the file, we need to remove texts that will cause our models to fail.
-Also remove loan status, it is perfectly collinear to loan_status_bin
-```{r remove-LC-grade-and-descriptive-columns}
-# As the loan grade is assigned by and exclusive to LC, it can introduce bias in this dataset
-combined_data = subset(combined_data, select = -c(grade, sub_grade, desc, title, emp_title, zip_code, loan_status))
-```
-
-Final cleaning of some data
+### Converting to date
+Covert some string form data to datetime format
 ```{r}
 combined_data <- combined_data %>%
   mutate(
-    # Convert earliest_cr_line to a date format
-    earliest_cr_line = paste0("01-", earliest_cr_line), 
-    earliest_cr_line = dmy(earliest_cr_line),
-    
-    # Convert last_credit_pull_d to a date format
-    last_credit_pull_d = paste0("01-", last_credit_pull_d),
-    last_credit_pull_d = dmy(last_credit_pull_d),
-    
-    next_pymnt_d = paste0("01-", next_pymnt_d),  
-    next_pymnt_d = dmy(next_pymnt_d) 
+    earliest_cr_line = my(earliest_cr_line),
+    last_credit_pull_d = my(last_credit_pull_d),
+    next_pymnt_d = my(next_pymnt_d),
+    last_pymnt_d = my(last_pymnt_d),
+    issue_d = my(issue_d) 
+  )
 
+```
+But one thing we know is that models only take in either continuous or categorical data. Meaning that string and datetime data formats will not be handle correctly.
+
+So now we convert the data to numeric values, such as year and months.
+```{r}
+combined_data <- combined_data %>%
+  mutate(
+    earliest_cr_year = year(earliest_cr_line),
+    earliest_cr_month = month(earliest_cr_line),
+
+    last_credit_pull_year = year(last_credit_pull_d),
+    last_credit_pull_month = month(last_credit_pull_d),
+
+    next_pymnt_year = year(next_pymnt_d),
+    next_pymnt_month = month(next_pymnt_d),
+    
+    last_pymnt_year = year(last_pymnt_d),
+    last_pymnt_month = month(last_pymnt_d),
+    
+    issue_d_year = year(issue_d),
+    issue_d_month = month(issue_d)
   )
 
 ```
 
+### Remove descriptive text
+Before saving the file, we need to remove texts that will cause our models to fail. Also remove loan status, it is perfectly collinear to loan_status_bin
+```{r remove-LC-grade-and-descriptive-columns}
+# As the loan grade is assigned by and exclusive to LC, it can introduce bias in this dataset
+combined_data = subset(combined_data, select = -c(grade, sub_grade, desc, title, emp_title, zip_code, loan_status, id, member_id, earliest_cr_line, last_credit_pull_d, next_pymnt_d, issue_d, last_pymnt_d))
+```
+
+### Categorical data
+Some of the data are still strings instead of categorical data, we can use the `as.factor` function to make them categorical
+```{r}
+combined_data <- combined_data %>%
+  mutate(home_ownership = as.factor(home_ownership),
+         verification_status = as.factor(verification_status),
+         pymnt_plan = as.factor(pymnt_plan),
+         initial_list_status = as.factor(initial_list_status),
+         term = as.factor(term),
+         addr_state = as.factor(addr_state),
+         application_type = as.factor(application_type),
+         verification_status_joint = as.factor(verification_status_joint)
+         )
+
+combined_data <- combined_data %>%
+  mutate(application_type = recode(application_type,
+                                   "Individual" = "Individual",
+                                   "INDIVIDUAL" = "Individual",
+                                   "Joint App" = "Joint",
+                                   "JOINT" = "Joint"))
+
+
+```
+
+### Check the levels
+```{r}
+factor_columns <- combined_data %>% select(where(is.factor))
+
+lapply(factor_columns, levels)
+
+```
+
+
+### Final check
+```{r}
+str(combined_data)
+```
+
+
+## Save the data as a RDS file
 ```{r save-cleaned-data-as-rds}
 # Save combined_data as a CSV file
 write_csv(combined_data, "../data/combined_data.csv")
 saveRDS(combined_data, "../data/combined_data.rds")
 file.remove("../data/combined_data.csv")
 ```
-## Index term to 0 or 1 -> To do before ML part with encoder (e.g. one-hot encoder)
 
-# Once all is done
-## 70/30 Data split
-## Save CSV file as combined_data_cleaned.csv
-
-# Future plans
 ## EDA
-## Scale the data for the relevant regressions
-## If the output is a probability, then >0.5 = bad loan, else good loan
+### Employment Length
+```{r}
+combined_data %>%
+  ggplot(aes(x=emp_length)) +
+  geom_bar(fill='steelblue') +
+  theme_minimal() + 
+  labs(x='Employment Length', y='Number of Loans', title='Distribution of Employment Length (Cleaned)')
 
-# Models to be use
-## 1. Benchmark model = Decision Tree + Logit
-## 2. Random Forest
-## 3. XGBoost
-## 4. Ridge Classifier
+emp_length_loan_counts <- combined_data %>%
+  group_by(emp_length, loan_status_bin) %>%
+  summarize(loan_count = n()) %>%
+  ungroup() %>%
+  group_by(emp_length) %>%
+  mutate(total_loans = sum(loan_count),
+         percentage_loans = (loan_count / total_loans) * 100)
 
+# Plot the stacked bar chart
+emp_length_loan_counts %>%
+  ggplot(aes(x = factor(emp_length), y = percentage_loans, fill = as.factor(loan_status_bin))) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    x = 'Employment Length',
+    y = 'Percentage of Loans',
+    title = 'Distribution of Employment Length (Stacked by Loan Status)',
+    fill = 'Loan Status'
+  ) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  scale_fill_manual(values = c("red", "green"), labels = c("Bad Loan (0)", "Good Loan (1)")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+We can see that most of the borrowers have been employed for 10 or more years. 
+
+### Loan Amount
+```{r}
+combined_data %>%
+  ggplot(aes(x = loan_amnt, fill = as.factor(loan_status_bin))) +
+  geom_density(alpha = 0.5) +  # Transparency for overlapping densities
+  labs(
+    title = "Density Plot of Loan Amount by Loan Status",
+    x = "Loan Amount",
+    y = "Density",
+    fill = "Loan Status"
+  ) +
+  scale_fill_manual(values = c("red", "green"), labels = c("Bad Loan (0)", "Good Loan (1)")) +
+  theme_minimal() +
+  theme(legend.position = "top")  # Moving legend to the top
+
+```
+
+
+### Percentage of loans offered over time
+```{r}
+# First, group by issue_d_year and loan_status_bin, and count the number of loans per group
+loan_counts_per_year <- combined_data %>%
+  group_by(issue_d_year, loan_status_bin) %>%
+  summarize(loan_count = n()) %>%
+  ungroup() %>%
+  group_by(issue_d_year) %>%
+  mutate(total_loans = sum(loan_count),
+         percentage_loans = (loan_count / total_loans) * 100)
+
+# Plot the stacked bar chart
+loan_counts_per_year %>%
+  ggplot(aes(x = issue_d_year, y = percentage_loans, fill = as.factor(loan_status_bin))) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = "Percentage of Loans Offered Over Time by Year (Stacked by Loan Status)",
+    x = "Year of Issue",
+    y = "Percentage of Total Loans",
+    fill = "Loan Status"
+  ) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  scale_fill_manual(values = c("red", "green"), labels = c("Bad Loan (0)", "Good Loan (1)")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
 

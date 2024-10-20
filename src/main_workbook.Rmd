@@ -49,6 +49,7 @@ cat("Test size: ", nrow(test_data), "\n")
 ```
 
 ## Baseline model - Decision tree with depth 7
+For refresher purposes, 1 is a good loan, 0 is a bad loan
 ### Creating the tree
 ```{r}
 baseline_tree <- rpart(loan_status_bin ~., 
@@ -58,7 +59,8 @@ baseline_tree <- rpart(loan_status_bin ~.,
 
 ```
 
-### Summary of the tree
+
+### Print the tree
 ```{r}
 rpart.plot(baseline_tree)
 ```
@@ -74,4 +76,3 @@ accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
 confusion_matrix
 accuracy
 ```
-
