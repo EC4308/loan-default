@@ -49,7 +49,7 @@ cat("Test size: ", nrow(test_data), "\n")
 ```
 
 ## Baseline model - Decision tree with depth 7
-For refresher purposes, 1 is a good loan, 0 is a bad loan
+For refresher purposes, 0 is a good loan, 1 is a bad loan
 ### Creating the tree
 ```{r}
 baseline_tree <- rpart(loan_status_bin ~., 
