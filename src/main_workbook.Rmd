@@ -76,3 +76,20 @@ accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
 confusion_matrix
 accuracy
 ```
+### Cost of FN
+```{r}
+test_data <- test_data %>% ungroup()
+
+test_data_with_predictions <- test_data %>%
+  mutate(predicted = predictions)
+
+false_negatives <- test_data_with_predictions %>%
+  filter(loan_status_bin == 1 & predicted == 0)
+
+#Calculate the potential money lost due to FN
+potential_money_lost <- sum(false_negatives$funded_amnt, na.rm = TRUE)
+
+cat("Potential money lost due to False Negatives: $", potential_money_lost, "\n")
+
+```
+
