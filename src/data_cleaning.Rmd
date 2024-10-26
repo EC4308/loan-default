@@ -13,6 +13,7 @@ library(jsonlite)
 library(lubridate)
 library(zoo)
 library(ggcorrplot)
+library(corrplot)
 ```
 
 ### Convert all the csv files to RDS
@@ -252,8 +253,23 @@ combined_data <- combined_data %>%
 ### Remove descriptive text
 Before saving the file, we need to remove texts that will cause our models to fail. Also remove loan status, it is perfectly collinear to loan_status_bin
 ```{r remove-LC-grade-and-descriptive-columns}
-# As the loan grade is assigned by and exclusive to LC, it can introduce bias in this dataset
-combined_data = subset(combined_data, select = -c(grade, sub_grade, desc, title, emp_title, zip_code, loan_status, id, member_id, earliest_cr_line, last_credit_pull_d, next_pymnt_d, issue_d, last_pymnt_d))
+original_columns <- colnames(combined_data)
+
+combined_data <- combined_data %>%
+  select(
+    loan_amnt, term, int_rate, installment, dti, issue_d_year, issue_d_month, pymnt_plan,  
+    grade, sub_grade, emp_length, home_ownership, annual_inc, verification_status,
+    purpose, mths_since_last_delinq, mths_since_last_record, delinq_2yrs, 
+    inq_last_6mths, open_acc, pub_rec, revol_bal, revol_util, total_acc, last_pymnt_amnt,   
+    loan_status_bin, delinquency_rate, addr_state, term, application_type
+  )
+
+selected_columns <- colnames(combined_data)
+removed_columns <- setdiff(original_columns, selected_columns)
+
+# Display the removed columns
+cat("Columns removed:\n", paste(removed_columns, collapse = ", "), "\n")
+
 ```
 
 ### Categorical data
@@ -263,11 +279,10 @@ combined_data <- combined_data %>%
   mutate(home_ownership = as.factor(home_ownership),
          verification_status = as.factor(verification_status),
          pymnt_plan = as.factor(pymnt_plan),
-         initial_list_status = as.factor(initial_list_status),
          term = as.factor(term),
          addr_state = as.factor(addr_state),
          application_type = as.factor(application_type),
-         verification_status_joint = as.factor(verification_status_joint)
+         sub_grade = as.factor(sub_grade)
          )
 
 combined_data <- combined_data %>%
@@ -360,16 +375,16 @@ combined_data %>%
 ```{r}
 # First, group by issue_d_year and loan_status_bin, and count the number of loans per group
 loan_counts_per_year <- combined_data %>%
-  group_by(issue_d_year, loan_status_bin) %>%
+  group_by(issue_d, loan_status_bin) %>%
   summarize(loan_count = n()) %>%
   ungroup() %>%
-  group_by(issue_d_year) %>%
+  group_by(issue_d) %>%
   mutate(total_loans = sum(loan_count),
          percentage_loans = (loan_count / total_loans) * 100)
 
 # Plot the stacked bar chart
 loan_counts_per_year %>%
-  ggplot(aes(x = issue_d_year, y = percentage_loans, fill = as.factor(loan_status_bin))) +
+  ggplot(aes(x = issue_d, y = percentage_loans, fill = as.factor(loan_status_bin))) +
   geom_bar(stat = "identity") +
   theme_minimal() +
   labs(
@@ -383,4 +398,23 @@ loan_counts_per_year %>%
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
+### Plotting subgradde
+```{r}
+sub_grade_distribution <- combined_data %>%
+  group_by(sub_grade) %>%
+  summarise(count = n()) %>%
+  mutate(proportion = count / sum(count))
+
+# Plot the distribution with sub_grade ordered by factor level (alphabetically)
+ggplot(sub_grade_distribution, aes(x = sub_grade, y = proportion)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Distribution of Sub Grade",
+       x = "Sub Grade",
+       y = "Proportion") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
 
