@@ -87,7 +87,8 @@ combined_data <- combined_data %>%
   filter(loan_status != "Current")
 ```
 
-### Now convert it to binary 
+### Now convert it to binary
+This will be our Y variable, whereby 0 denotes a good loan, and 1 denotes a bad loan.
 ```{r}
 combined_data <- combined_data %>%
   mutate(
@@ -318,6 +319,7 @@ saveRDS(combined_data, "../data/combined_data.rds")
 file.remove("../data/combined_data.csv")
 ```
 
+
 ## EDA
 ### Employment Length
 ```{r}
@@ -347,7 +349,7 @@ emp_length_loan_counts %>%
     fill = 'Loan Status'
   ) +
   scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-  scale_fill_manual(values = c("red", "green"), labels = c("Bad Loan (0)", "Good Loan (1)")) +
+  scale_fill_manual(values = c("green", "red"), labels = c("Good Loan (0)", "Bad Loan (1)")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
@@ -357,34 +359,33 @@ We can see that most of the borrowers have been employed for 10 or more years.
 ```{r}
 combined_data %>%
   ggplot(aes(x = loan_amnt, fill = as.factor(loan_status_bin))) +
-  geom_density(alpha = 0.5) +  # Transparency for overlapping densities
+  geom_density(alpha = 0.4) +  # Transparency for overlapping densities
   labs(
     title = "Density Plot of Loan Amount by Loan Status",
     x = "Loan Amount",
     y = "Density",
     fill = "Loan Status"
   ) +
-  scale_fill_manual(values = c("red", "green"), labels = c("Bad Loan (0)", "Good Loan (1)")) +
+  scale_fill_manual(values = c("green", "red"), labels = c("Good Loan (0)", "Bad Loan (1)")) +
   theme_minimal() +
   theme(legend.position = "top")  # Moving legend to the top
 
 ```
 
-
 ### Percentage of loans offered over time
 ```{r}
 # First, group by issue_d_year and loan_status_bin, and count the number of loans per group
 loan_counts_per_year <- combined_data %>%
-  group_by(issue_d, loan_status_bin) %>%
+  group_by(issue_d_year, loan_status_bin) %>%
   summarize(loan_count = n()) %>%
   ungroup() %>%
-  group_by(issue_d) %>%
+  group_by(issue_d_year) %>%
   mutate(total_loans = sum(loan_count),
          percentage_loans = (loan_count / total_loans) * 100)
 
 # Plot the stacked bar chart
 loan_counts_per_year %>%
-  ggplot(aes(x = issue_d, y = percentage_loans, fill = as.factor(loan_status_bin))) +
+  ggplot(aes(x = issue_d_year, y = percentage_loans, fill = as.factor(loan_status_bin))) +
   geom_bar(stat = "identity") +
   theme_minimal() +
   labs(
@@ -394,11 +395,12 @@ loan_counts_per_year %>%
     fill = "Loan Status"
   ) +
   scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-  scale_fill_manual(values = c("red", "green"), labels = c("Bad Loan (0)", "Good Loan (1)")) +
+  scale_fill_manual(values = c("green", "red"), labels = c("Good Loan (0)", "Bad Loan (1)")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
-### Plotting subgradde
+
+### Plotting subgrade
 ```{r}
 sub_grade_distribution <- combined_data %>%
   group_by(sub_grade) %>%
@@ -417,4 +419,34 @@ ggplot(sub_grade_distribution, aes(x = sub_grade, y = proportion)) +
 
 ```
 
+### Plotting grade vs loan status
+```{r}
+grade_distribution <- combined_data %>%
+  group_by(grade, loan_status_bin) %>%
+  summarise(loan_count = n()) %>%
+  ungroup() %>%
+  group_by(grade) %>%
+  mutate(total_loans = sum(loan_count),
+         percent_loans = (loan_count / total_loans) * 100)
 
+# Plot the distribution of grade
+combined_data %>%
+  ggplot(aes(x=grade)) +
+  geom_bar(fill='steelblue') +
+  theme_minimal() + 
+  labs(x='Loan Grade', y='Number of Loans', title='Distribution of Loan Grade')
+
+# Plot the distribution of grade versus loan status
+ggplot(grade_distribution, aes(x = grade, y = percent_loans, fill = as.factor(loan_status_bin))) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Distribution of Grade",
+       x = "Grade",
+       y = "Proportion",
+       fill = "Loan Status"
+  ) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  scale_fill_manual(values = c("green", "red"), labels = c("Good Loan (0)", "Bad Loan (1)")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Most of the loans typically fall within the B-C grade range, and as expected, we see that the percent of bad loans climb steadily as the loan grade worsens.
