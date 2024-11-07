@@ -121,7 +121,7 @@ varImpPlot(rf)
 ### Confusion Matrix
 ```{r}
 # Confusion matrix
-rf_predictions <- predict(baseline_rf, test_data, type = "class")
+rf_predictions <- predict(rf, test_data, type = "class")
 rf_confusion_matrix <- table(test_data$will_default, rf_predictions)
 rf_accuracy <- sum(diag(rf_confusion_matrix)) / sum(rf_confusion_matrix)
 rf_confusion_matrix
