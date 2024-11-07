@@ -92,7 +92,7 @@ This will be our Y variable, whereby 0 denotes a good loan, and 1 denotes a bad 
 ```{r}
 combined_data <- combined_data %>%
   mutate(
-    loan_status_bin = case_when(
+    will_default = case_when(
       loan_status %in% c("Fully Paid", "Does not meet the credit policy. Status:Fully Paid") ~ 0,
       TRUE ~ 1  # Everything else will be 1
     )
@@ -103,7 +103,7 @@ head(combined_data)
 
 ### Check how many 0s and 1s in the new binary column
 ```{r}
-loan_status_distribution <- table(combined_data$loan_status_bin)
+loan_status_distribution <- table(combined_data$will_default)
 print(loan_status_distribution)
 
 paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distribution)) * 100
@@ -156,7 +156,7 @@ set.seed(4308)
 random_sampled_data <- combined_data %>%
   sample_n(size = 50000)
 
-loan_status_distribution <- table(random_sampled_data$loan_status_bin)
+loan_status_distribution <- table(random_sampled_data$will_default)
 print(loan_status_distribution)
 
 paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distribution)) * 100
@@ -172,11 +172,11 @@ Maybe we can do a 50/50 stratification to get a better sensing on real data?
 set.seed(123) 
 
 combined_data <- combined_data %>%
-  group_by(loan_status_bin) %>%
+  group_by(will_default) %>%
   sample_n(size = 25000, replace = TRUE)  # 50% from each class, adjust size as needed
 
 # Check distribution
-table(combined_data$loan_status_bin)
+table(combined_data$will_default)
 ```
 1. Strat (50/50)
 2. Random
@@ -251,74 +251,6 @@ combined_data <- combined_data %>%
 
 ```
 
-### Remove descriptive text
-Before saving the file, we need to remove texts that will cause our models to fail. Also remove loan status, it is perfectly collinear to loan_status_bin
-```{r remove-LC-grade-and-descriptive-columns}
-original_columns <- colnames(combined_data)
-
-combined_data <- combined_data %>%
-  select(
-    loan_amnt, term, int_rate, installment, dti, issue_d_year, issue_d_month, pymnt_plan,  
-    grade, sub_grade, emp_length, home_ownership, annual_inc, verification_status,
-    purpose, mths_since_last_delinq, mths_since_last_record, delinq_2yrs, 
-    inq_last_6mths, open_acc, pub_rec, revol_bal, revol_util, total_acc, last_pymnt_amnt,   
-    loan_status_bin, delinquency_rate, addr_state, term, application_type
-  )
-
-selected_columns <- colnames(combined_data)
-removed_columns <- setdiff(original_columns, selected_columns)
-
-# Display the removed columns
-cat("Columns removed:\n", paste(removed_columns, collapse = ", "), "\n")
-
-```
-
-### Categorical data
-Some of the data are still strings instead of categorical data, we can use the `as.factor` function to make them categorical
-```{r}
-combined_data <- combined_data %>%
-  mutate(home_ownership = as.factor(home_ownership),
-         verification_status = as.factor(verification_status),
-         pymnt_plan = as.factor(pymnt_plan),
-         term = as.factor(term),
-         addr_state = as.factor(addr_state),
-         application_type = as.factor(application_type),
-         sub_grade = as.factor(sub_grade)
-         )
-
-combined_data <- combined_data %>%
-  mutate(application_type = recode(application_type,
-                                   "Individual" = "Individual",
-                                   "INDIVIDUAL" = "Individual",
-                                   "Joint App" = "Joint",
-                                   "JOINT" = "Joint"))
-
-
-```
-
-### Check the levels
-```{r}
-factor_columns <- combined_data %>% select(where(is.factor))
-
-lapply(factor_columns, levels)
-
-```
-
-
-### Final check
-```{r}
-str(combined_data)
-```
-
-
-## Save the data as a RDS file
-```{r save-cleaned-data-as-rds}
-# Save combined_data as a CSV file
-write_csv(combined_data, "../data/combined_data.csv")
-saveRDS(combined_data, "../data/combined_data.rds")
-file.remove("../data/combined_data.csv")
-```
-
 
 ## EDA
 ### Employment Length
@@ -330,7 +262,7 @@ combined_data %>%
   labs(x='Employment Length', y='Number of Loans', title='Distribution of Employment Length (Cleaned)')
 
 emp_length_loan_counts <- combined_data %>%
-  group_by(emp_length, loan_status_bin) %>%
+  group_by(emp_length, will_default) %>%
   summarize(loan_count = n()) %>%
   ungroup() %>%
   group_by(emp_length) %>%
@@ -339,7 +271,7 @@ emp_length_loan_counts <- combined_data %>%
 
 # Plot the stacked bar chart
 emp_length_loan_counts %>%
-  ggplot(aes(x = factor(emp_length), y = percentage_loans, fill = as.factor(loan_status_bin))) +
+  ggplot(aes(x = factor(emp_length), y = percentage_loans, fill = as.factor(will_default))) +
   geom_bar(stat = "identity") +
   theme_minimal() +
   labs(
@@ -358,7 +290,7 @@ We can see that most of the borrowers have been employed for 10 or more years.
 ### Loan Amount
 ```{r}
 combined_data %>%
-  ggplot(aes(x = loan_amnt, fill = as.factor(loan_status_bin))) +
+  ggplot(aes(x = loan_amnt, fill = as.factor(will_default))) +
   geom_density(alpha = 0.4) +  # Transparency for overlapping densities
   labs(
     title = "Density Plot of Loan Amount by Loan Status",
@@ -374,9 +306,9 @@ combined_data %>%
 
 ### Percentage of loans offered over time
 ```{r}
-# First, group by issue_d_year and loan_status_bin, and count the number of loans per group
+# First, group by issue_d_year and will_default, and count the number of loans per group
 loan_counts_per_year <- combined_data %>%
-  group_by(issue_d_year, loan_status_bin) %>%
+  group_by(issue_d_year, will_default) %>%
   summarize(loan_count = n()) %>%
   ungroup() %>%
   group_by(issue_d_year) %>%
@@ -385,7 +317,7 @@ loan_counts_per_year <- combined_data %>%
 
 # Plot the stacked bar chart
 loan_counts_per_year %>%
-  ggplot(aes(x = issue_d_year, y = percentage_loans, fill = as.factor(loan_status_bin))) +
+  ggplot(aes(x = issue_d_year, y = percentage_loans, fill = as.factor(will_default))) +
   geom_bar(stat = "identity") +
   theme_minimal() +
   labs(
@@ -422,7 +354,7 @@ ggplot(sub_grade_distribution, aes(x = sub_grade, y = proportion)) +
 ### Plotting grade vs loan status
 ```{r}
 grade_distribution <- combined_data %>%
-  group_by(grade, loan_status_bin) %>%
+  group_by(grade, will_default) %>%
   summarise(loan_count = n()) %>%
   ungroup() %>%
   group_by(grade) %>%
@@ -437,7 +369,7 @@ combined_data %>%
   labs(x='Loan Grade', y='Number of Loans', title='Distribution of Loan Grade')
 
 # Plot the distribution of grade versus loan status
-ggplot(grade_distribution, aes(x = grade, y = percent_loans, fill = as.factor(loan_status_bin))) +
+ggplot(grade_distribution, aes(x = grade, y = percent_loans, fill = as.factor(will_default))) +
   geom_bar(stat = "identity") +
   theme_minimal() +
   labs(title = "Distribution of Grade",
@@ -450,3 +382,71 @@ ggplot(grade_distribution, aes(x = grade, y = percent_loans, fill = as.factor(lo
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 Most of the loans typically fall within the B-C grade range, and as expected, we see that the percent of bad loans climb steadily as the loan grade worsens.
+
+### Remove descriptive text
+Before saving the file, we need to remove texts that will cause our models to fail. Also remove loan status, it is perfectly collinear to will_default
+```{r remove-LC-grade-and-descriptive-columns}
+original_columns <- colnames(combined_data)
+
+combined_data <- combined_data %>%
+  select(
+    loan_amnt, term, int_rate, installment, dti, pymnt_plan, 
+    emp_length, home_ownership, annual_inc, verification_status,
+    purpose, mths_since_last_delinq, mths_since_last_record, delinq_2yrs, 
+    inq_last_6mths, open_acc, pub_rec, revol_bal, revol_util, total_acc,   
+    will_default, delinquency_rate, addr_state, term, application_type
+  )
+
+selected_columns <- colnames(combined_data)
+removed_columns <- setdiff(original_columns, selected_columns)
+
+# Display the removed columns
+cat("Columns removed:\n", paste(removed_columns, collapse = ", "), "\n")
+
+```
+
+### Categorical data
+Some of the data are still strings instead of categorical data, we can use the `as.factor` function to make them categorical
+```{r}
+combined_data <- combined_data %>%
+  mutate(home_ownership = as.factor(home_ownership),
+         verification_status = as.factor(verification_status),
+         pymnt_plan = as.factor(pymnt_plan),
+         term = as.factor(term),
+         addr_state = as.factor(addr_state),
+         application_type = as.factor(application_type),
+         will_default = as.factor(will_default)
+         )
+
+combined_data <- combined_data %>%
+  mutate(application_type = recode(application_type,
+                                   "Individual" = "Individual",
+                                   "INDIVIDUAL" = "Individual",
+                                   "Joint App" = "Joint",
+                                   "JOINT" = "Joint"))
+
+
+```
+
+### Check the levels
+```{r}
+factor_columns <- combined_data %>% select(where(is.factor))
+
+lapply(factor_columns, levels)
+
+```
+
+
+
+### Final check
+```{r}
+str(combined_data)
+```
+
+
+## Save the data as a RDS file
+```{r save-cleaned-data-as-rds}
+# Save combined_data as a CSV file
+saveRDS(combined_data, "../data/combined_data.rds")
+```
+

@@ -15,6 +15,8 @@ library(zoo)
 library(dplyr)
 library(rpart)
 library(rpart.plot)
+library(randomForest)
+
 
 data <- readRDS("../data/combined_data.rds")
 ```
@@ -41,6 +43,10 @@ train_data <- data[train_indices, ]
 validation_data <- data[validation_indices, ]
 test_data <- data[test_indices, ]
 
+# Replace NA values with 0 in both train and test datasets
+train_data <- train_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
+test_data <- test_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
+
 #Check the sizes of each set
 cat("Train size: ", nrow(train_data), "\n")
 cat("Validation size: ", nrow(validation_data), "\n")
@@ -52,7 +58,7 @@ cat("Test size: ", nrow(test_data), "\n")
 For refresher purposes, 0 is a good loan, 1 is a bad loan
 ### Creating the tree
 ```{r}
-baseline_tree <- rpart(loan_status_bin ~., 
+baseline_tree <- rpart(will_default ~ ., 
                        data = train_data, 
                        method = "class", 
                        control = rpart.control(maxdepth = 7))
@@ -71,7 +77,7 @@ predictions <- predict(baseline_tree, test_data, type = "class")
 
 ### Confusion Matrix
 ```{r}
-confusion_matrix <- table(test_data$loan_status_bin, predictions)
+confusion_matrix <- table(test_data$will_default, predictions)
 accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
 confusion_matrix
 accuracy
@@ -84,12 +90,42 @@ test_data_with_predictions <- test_data %>%
   mutate(predicted = predictions)
 
 false_negatives <- test_data_with_predictions %>%
-  filter(loan_status_bin == 1 & predicted == 0)
+  filter(will_default == 1 & predicted == 0)
 
 #Calculate the potential money lost due to FN
-potential_money_lost <- sum(false_negatives$funded_amnt, na.rm = TRUE)
+potential_money_lost <- sum(false_negatives$loan_amnt, na.rm = FALSE)
 
 cat("Potential money lost due to False Negatives: $", potential_money_lost, "\n")
+
+```
+This is an upper estimate, we are assuming that they did not even pay a single cent of money.
+
+## ML Model 1: Random Forest
+```{r}
+
+rf <- randomForest(will_default ~ ., 
+                            data = train_data, 
+                            ntree = 500,
+                            mtry = sqrt(ncol(train_data) - 1),
+                            importance = TRUE)
+
+```
+
+### Importance plot
+```{r}
+# Predict on the test data
+importance(rf)
+varImpPlot(rf)
+
+```
+### Confusion Matrix
+```{r}
+# Confusion matrix
+rf_predictions <- predict(baseline_rf, test_data, type = "class")
+rf_confusion_matrix <- table(test_data$will_default, rf_predictions)
+rf_accuracy <- sum(diag(rf_confusion_matrix)) / sum(rf_confusion_matrix)
+rf_confusion_matrix
+rf_accuracy
 
 ```
 
