@@ -17,6 +17,7 @@ library(rpart)
 library(rpart.plot)
 library(randomForest)
 library(pROC)
+library(caret)
 
 data <- readRDS("../data/combined_data.rds")
 ```
@@ -132,18 +133,14 @@ cat("Accuracy:", round(accuracy, 4), "\n")
 
 false_negative <- calculate_fnr(confusion_matrix)
 cat("False Negatives (FN):", false_negative, "\n")
-cat("False Negative Percentage:", round(false_negative_percentage, 2), "%\n")
+cat("False Negative Percentage:", round(false_negative, 2), "%\n")
 
 recall <- calculate_recall(confusion_matrix)
-cat("True Positives (TP):", TP, "\n")
 cat("Recall:", round(recall, 4), "\n")
 
 f1_score <- calculate_f1_score(confusion_matrix)
 cat("F1 Score", round(f1_score, 4), "\n")
 ```
-
-This is an upper estimate, we are assuming that they did not even pay a single cent of money.
-
 ## ML Model 1: Random Forest
 ```{r}
 
@@ -179,10 +176,8 @@ cat("Accuracy:", round(accuracy, 4), "\n")
 
 false_negative <- calculate_fnr(confusion_matrix)
 cat("False Negatives (FN):", false_negative, "\n")
-cat("False Negative Percentage:", round(false_negative_percentage, 2), "%\n")
 
 recall <- calculate_recall(confusion_matrix)
-cat("True Positives (TP):", TP, "\n")
 cat("Recall:", round(recall, 4), "\n")
 
 f1_score <- calculate_f1_score(confusion_matrix)
@@ -190,3 +185,11 @@ cat("F1 Score", round(f1_score, 4), "\n")
 
 ```
 
+## xgboost
+
+## Ridge Classifier
+
+## Final Comparison
+### Recall Precision Plot
+
+### Table of all results 
