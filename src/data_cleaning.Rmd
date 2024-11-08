@@ -62,10 +62,9 @@ So there will be a clean horizontal join between all the data points. A sign of 
 lc_loan_clean <- lc_loan %>% select(-all_of(diff_cols))
 lc_2016_2017_clean <- lc_2016_2017 %>% select(-all_of(diff_cols_2))
 combined_data <- bind_rows(lc_loan_clean, lc_2016_2017_clean)
-glimpse(combined_data)
+#glimpse(combined_data)
 ```
 In the join, there is no _x and _y, meaning that it was a clean join.
-
 
 ### Convert loan_status to a factor (categorical variable)
 Helps with the data analytics
@@ -97,8 +96,6 @@ combined_data <- combined_data %>%
       TRUE ~ 1  # Everything else will be 1
     )
   )
-
-head(combined_data)
 ```
 
 ### Check how many 0s and 1s in the new binary column
@@ -111,7 +108,7 @@ paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distributi
 cat("Percentage of loans that are paid off in the full data set:", round(paid_off_percentage, 2), "%\n")
 
 ```
-# Brandon + LX
+
 ## FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks (Last payment date + 3 months)
 ```{r}
 combined_data %>%
@@ -121,10 +118,14 @@ combined_data %>%
 delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
 delinquency_rate <- delinquency_rate %>%
   rename("delinquency_rate" = "DRCLACBS") %>%
-  mutate(DATE = as.yearqtr(ymd(DATE)))
+  mutate(DATE = as.yearqtr(ymd(DATE)), lag_quarter = lag(DATE), lag_delinquency = lag(delinquency_rate))
 
-combined_data %>% 
+combined_data %>%
   left_join(delinquency_rate, by = c("quarter" = "DATE")) -> combined_data
+```
+
+```{r}
+combined_data
 ```
 
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
@@ -250,7 +251,6 @@ combined_data <- combined_data %>%
   )
 
 ```
-
 
 ## EDA
 ### Employment Length
@@ -394,7 +394,7 @@ combined_data <- combined_data %>%
     emp_length, home_ownership, annual_inc, verification_status,
     purpose, mths_since_last_delinq, mths_since_last_record, delinq_2yrs, 
     inq_last_6mths, open_acc, pub_rec, revol_bal, revol_util, total_acc,   
-    will_default, delinquency_rate, addr_state, term, application_type
+    will_default, lag_delinquency, addr_state, term, application_type
   )
 
 selected_columns <- colnames(combined_data)
@@ -402,7 +402,6 @@ removed_columns <- setdiff(original_columns, selected_columns)
 
 # Display the removed columns
 cat("Columns removed:\n", paste(removed_columns, collapse = ", "), "\n")
-
 ```
 
 ### Categorical data
@@ -436,13 +435,10 @@ lapply(factor_columns, levels)
 
 ```
 
-
-
 ### Final check
 ```{r}
 str(combined_data)
 ```
-
 
 ## Save the data as a RDS file
 ```{r save-cleaned-data-as-rds}
