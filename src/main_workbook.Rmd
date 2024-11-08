@@ -18,6 +18,10 @@ library(rpart.plot)
 library(randomForest)
 library(pROC)
 library(caret)
+library(glmnet)
+library(ggplot2)
+library(dplyr)
+library(pROC)
 
 data <- readRDS("../data/combined_data.rds")
 ```
@@ -119,7 +123,7 @@ rpart.plot(baseline_tree)
 ```
 ### Predict on test data
 ```{r}
-predictions <- predict(baseline_tree, test_data, type = "class")
+tree_predictions <- predict(baseline_tree, test_data, type = "prob")[,2]
 ```
 
 ### Confusion Matrix
@@ -159,10 +163,10 @@ importance(rf)
 varImpPlot(rf)
 
 ```
-### Confusion Matrix
+### Prediction
 ```{r}
 # Confusion matrix
-rf_predictions <- predict(rf, test_data, type = "class")
+rf_predictions <- predict(rf, test_data, type = "prob")[,2]
 ```
 
 ### Metrics
@@ -187,9 +191,151 @@ cat("F1 Score", round(f1_score, 4), "\n")
 
 ## xgboost
 
+## LASSO Classifier
+```{r}
+# Perform 10 fold CV to determine lambda
+x_train <- model.matrix(will_default ~ . - 1, data = train_data)
+y_train <- train_data$will_default
+
+x_test <- model.matrix(will_default ~ . - 1, data = test_data)
+y_test <- test_data$will_default
+
+cv_lasso <- cv.glmnet(x_train, y_train, family = "binomial", alpha = 1)
+best_lambda_lasso <- cv_lasso$lambda.min
+
+# Fit LASSO model using lambda found 
+lasso_model <- glmnet(x_train, y_train, family = "binomial", alpha = 1, lambda = best_lambda_lasso)
+```
+
+### Prediction
+```{r}
+lasso_predictions <- predict(lasso_model, x_test, type = "class")
+```
+
+### Metrics
+```{r}
+lasso_confusion_matrix <- table(test_data$will_default, lasso_predictions)
+cat("LASSO Confusion Matrix: \n")
+print(lasso_confusion_matrix)
+
+lasso_accuracy <- calculate_accuracy(lasso_confusion_matrix)
+cat("LASSO Accuracy:", round(lasso_accuracy, 4), "\n")
+
+lasso_fnr <- calculate_fnr(lasso_confusion_matrix)
+cat("LASSO False Negative Rate:", round(lasso_fnr, 4), "\n")
+
+lasso_f1_score <- calculate_f1_score(lasso_confusion_matrix)
+cat("LASSO F1 Score:", round(lasso_f1_score, 4), "\n")
+```
 ## Ridge Classifier
+```{r}
+# Perform 10 fold CV to determine lambda
+cv_ridge <- cv.glmnet(x_train, y_train, family = "binomial", alpha = 0)
+best_lambda_ridge <- cv_ridge$lambda.min
+
+# Fit LASSO model using lambda found 
+ridge_model <- glmnet(x_train, y_train, family = "binomial", alpha = 0, lambda = best_lambda_ridge)
+```
+
+###Prediction
+```{r}
+ridge_predictions <- predict(ridge_model, newx = x_test, type = "class")
+```
+
+### Metrics
+```{r}
+ridge_confusion_matrix <- table(test_data$will_default, ridge_predictions)
+cat("Ridge Confusion Matrix:\n")
+print(ridge_confusion_matrix)
+
+ridge_accuracy <- calculate_accuracy(ridge_confusion_matrix)
+cat("Ridge Accuracy:", round(ridge_accuracy, 4), "\n")
+
+ridge_fnr <- calculate_fnr(ridge_confusion_matrix)
+cat("Ridge False Negative Rate:", round(ridge_fnr, 4), "\n")
+
+ridge_f1_score <- calculate_f1_score(ridge_confusion_matrix)
+cat("Ridge F1 Score:", round(ridge_f1_score, 4), "\n")
+```
 
 ## Final Comparison
 ### Recall Precision Plot
+```{r}
+plot_data <- data.frame(recall = numeric(), precision = numeric(), model = character())
+
+# Function to calculate precision and recall
+precision_recall <- function(probs, labels, model_name) {
+  roc_obj <- roc(labels, probs)
+  pr_data <- coords(roc_obj, x = "all", ret = c("recall", "precision"), transpose = FALSE)
+  data.frame(Recall = pr_data$recall, Precision = pr_data$precision, Model = model_name)
+}
+
+# Model 1: Decision Tree
+tree_pr <- calculate_precision_recall(tree_predictions, test_data$will_default, "Decision Tree")
+plot_data <- rbind(plot_data, tree_pr)
+
+# Model 2: Random Forest
+rf_pr <- calculate_precision_recall(rf_predictions, test_data$will_default, "Random Forest")
+plot_data <- rbind(plot_data, rf_pr)
+
+# Model 3: LASSO
+lasso_plot <- calculate_precision_recall(as.numeric(lasso_predictions), y_test, "LASSO")
+plot_data <- rbind(plot_data, lasso_pr)
+
+# Model 4: Ridge
+ridge_plot <- calculate_precision_recall(as.numeric(ridge_predictions), y_test, "Ridge")
+plot_data <- rbind(plot_data, ridge_pr)
+
+ggplot(plot_data, aes(x = Recall, y = Precision, color = Model)) +
+  geom_line() +
+  labs(title = "Precision-Recall Curve for Various Models", x = "Recall", y = "Precision") +
+  theme_minimal()
+```
 
 ### Table of all results 
+```{r}
+# Initialize an empty data frame for storing results
+results_table <- data.frame(
+  Model = character(),
+  Accuracy = numeric(),
+  Recall = numeric(),
+  Precision = numeric(),
+  FNR = numeric(),
+  F1_Score = numeric(),
+  stringsAsFactors = FALSE
+)
+
+models <- list(
+  list(name = "Decision Tree", predictions = predict(baseline_tree, test_data, type = "class")),
+  list(name = "Random Forest", predictions = predict(rf, test_data, type = "class")),
+  list(name = "LASSO", predictions = predict(lasso_model, x_test, type = "class")),
+  list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class"))
+)
+
+# Loop through each model, calculate metrics, and add results to  table
+for (model in models) {
+  model_name <- model$name
+  predictions <- as.factor(model$predictions) 
+  actuals <- as.factor(test_data$will_default)
+  
+  confusion_matrix <- table(actuals, predictions)
+  accuracy <- calculate_accuracy(confusion_matrix)
+  recall <- calculate_recall(confusion_matrix)
+  precision <- calculate_precision(confusion_matrix)
+  fnr <- calculate_fnr(confusion_matrix)
+  f1_score <- calculate_f1_score(confusion_matrix)
+  
+  results_table <- rbind(results_table, data.frame(
+    Model = model_name,
+    Accuracy = round(accuracy, 4),
+    Recall = round(recall, 4),
+    Precision = round(precision, 4),
+    FNR = round(fnr, 4),
+    F1_Score = round(f1_score, 4)
+  ))
+}
+
+print(results_table)
+
+```
+
