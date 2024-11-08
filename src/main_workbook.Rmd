@@ -16,7 +16,7 @@ library(dplyr)
 library(rpart)
 library(rpart.plot)
 library(randomForest)
-
+library(pROC)
 
 data <- readRDS("../data/combined_data.rds")
 ```
@@ -54,6 +54,52 @@ cat("Test size: ", nrow(test_data), "\n")
 
 ```
 
+## Calculation metrics
+Below are the functions used to calculate the metrics
+```{r}
+# Accuracy
+calculate_accuracy <- function(confusion_matrix) {
+  TP <- confusion_matrix[2, 2]
+  TN <- confusion_matrix[1, 1]
+  accuracy <- (TP + TN) / sum(confusion_matrix)
+  return(accuracy)
+}
+
+# Recall (Sensitivity)
+calculate_recall <- function(confusion_matrix) {
+  TP <- confusion_matrix[2, 2]
+  FN <- confusion_matrix[2, 1]
+  recall <- TP / (TP + FN)
+  return(recall)
+}
+
+# False Negative Rate (FNR)
+calculate_fnr <- function(confusion_matrix) {
+  FN <- confusion_matrix[2, 1]
+  TP <- confusion_matrix[2, 2]
+  fnr <- FN / (TP + FN)
+  return(fnr)
+}
+
+# Precision
+calculate_precision <- function(confusion_matrix) {
+  TP <- confusion_matrix[2, 2]
+  FP <- confusion_matrix[1, 2]
+  precision <- TP / (TP + FP)
+  return(precision)
+}
+
+# F1 Score
+calculate_f1_score <- function(confusion_matrix) {
+  recall <- calculate_recall(confusion_matrix)
+  precision <- calculate_precision(confusion_matrix)
+  f1_score <- 2 * (precision * recall) / (precision + recall)
+  return(f1_score)
+}
+
+```
+
+
 ## Baseline model - Decision tree with depth 7
 For refresher purposes, 0 is a good loan, 1 is a bad loan
 ### Creating the tree
@@ -78,26 +124,24 @@ predictions <- predict(baseline_tree, test_data, type = "class")
 ### Confusion Matrix
 ```{r}
 confusion_matrix <- table(test_data$will_default, predictions)
-accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
-confusion_matrix
-accuracy
+print("Confusion Matrix:")
+print(confusion_matrix)
+
+accuracy <- calculate_accuracy(confusion_matrix)
+cat("Accuracy:", round(accuracy, 4), "\n")
+
+false_negative <- calculate_fnr(confusion_matrix)
+cat("False Negatives (FN):", false_negative, "\n")
+cat("False Negative Percentage:", round(false_negative_percentage, 2), "%\n")
+
+recall <- calculate_recall(confusion_matrix)
+cat("True Positives (TP):", TP, "\n")
+cat("Recall:", round(recall, 4), "\n")
+
+f1_score <- calculate_f1_score(confusion_matrix)
+cat("F1 Score", round(f1_score, 4), "\n")
 ```
-### Cost of FN
-```{r}
-test_data <- test_data %>% ungroup()
 
-test_data_with_predictions <- test_data %>%
-  mutate(predicted = predictions)
-
-false_negatives <- test_data_with_predictions %>%
-  filter(will_default == 1 & predicted == 0)
-
-#Calculate the potential money lost due to FN
-potential_money_lost <- sum(false_negatives$loan_amnt, na.rm = FALSE)
-
-cat("Potential money lost due to False Negatives: $", potential_money_lost, "\n")
-
-```
 This is an upper estimate, we are assuming that they did not even pay a single cent of money.
 
 ## ML Model 1: Random Forest
@@ -122,10 +166,27 @@ varImpPlot(rf)
 ```{r}
 # Confusion matrix
 rf_predictions <- predict(rf, test_data, type = "class")
-rf_confusion_matrix <- table(test_data$will_default, rf_predictions)
-rf_accuracy <- sum(diag(rf_confusion_matrix)) / sum(rf_confusion_matrix)
-rf_confusion_matrix
-rf_accuracy
+```
+
+### Metrics
+```{r}
+confusion_matrix <- table(test_data$will_default, rf_predictions)
+print("Confusion Matrix:")
+print(confusion_matrix)
+
+accuracy <- calculate_accuracy(confusion_matrix)
+cat("Accuracy:", round(accuracy, 4), "\n")
+
+false_negative <- calculate_fnr(confusion_matrix)
+cat("False Negatives (FN):", false_negative, "\n")
+cat("False Negative Percentage:", round(false_negative_percentage, 2), "%\n")
+
+recall <- calculate_recall(confusion_matrix)
+cat("True Positives (TP):", TP, "\n")
+cat("Recall:", round(recall, 4), "\n")
+
+f1_score <- calculate_f1_score(confusion_matrix)
+cat("F1 Score", round(f1_score, 4), "\n")
 
 ```
 
