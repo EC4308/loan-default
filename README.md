@@ -16,6 +16,8 @@ The project utilizes LendingClub’s complete loan data from 2007 to 2017, sourc
 Our approach leverages recent advancements in machine learning to predict credit default:
 
 Models Used: Ensemble learning techniques such as random forest and boosted classification (XGBoost), along with Ridge and Lasso classifiers, will be implemented, with simpler models like decision trees and logistic regression as benchmarks.
+
+
 Priority: The model selection and tuning will focus on maximizing recall to minimize false negatives.
 
 # Evaluation Metrics
