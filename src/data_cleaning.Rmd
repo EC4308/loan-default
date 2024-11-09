@@ -5,7 +5,7 @@ date: "2024-10-11"
 output: html_document
 ---
 
-## Initial setup
+### Initial setup
 ```{r setup, include=FALSE}
 library(readr)
 library(tidyverse)
@@ -108,83 +108,6 @@ paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distributi
 cat("Percentage of loans that are paid off in the full data set:", round(paid_off_percentage, 2), "%\n")
 
 ```
-
-## FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks (Last payment date + 3 months)
-```{r}
-combined_data %>%
-  mutate(last_pymnt_d = if_else(is.na(last_pymnt_d), issue_d, last_pymnt_d),  # Replace NA with issue_d so that those that did not pay a single payment has a date to merge with the delinquency data 
-         quarter = as.yearqtr(dmy(paste("01", last_pymnt_d, sep = "-")))) -> combined_data
-
-delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
-delinquency_rate <- delinquency_rate %>%
-  rename("delinquency_rate" = "DRCLACBS") %>%
-  mutate(DATE = as.yearqtr(ymd(DATE)), lag_quarter = lag(DATE), lag_delinquency = lag(delinquency_rate))
-
-combined_data %>%
-  left_join(delinquency_rate, by = c("quarter" = "DATE")) -> combined_data
-```
-
-```{r}
-combined_data
-```
-
-### Stratify the data based on the loan_status and get ~ 50,000 accordingly
-Random suggestion, compare the direct pulling of 50k data points vs stratified
-```{r}
-## Stratify data based on loan status
-# Set seed for reproducibility
-set.seed(42)
-
-# Stratified Sampling by 'loan status'
-strat_cols <- c("loan_status")
-
-# Perform the stratified sampling for training set (20%)
-train_data <- combined_data %>%
-  group_by(across(all_of(strat_cols))) %>%
-  sample_frac(0.2) %>% # Adjust the fraction as needed for training set
-  ungroup()
-
-# # Remaining data for test sets
-test_data <- anti_join(combined_data, train_data)
-```
-
-#### Random pulling
-```{r}
-# Set the seed for reproducibility
-set.seed(4308)
-
-# Randomly sample 50,000 rows from the dataset, as it is getting way too large
-random_sampled_data <- combined_data %>%
-  sample_n(size = 50000)
-
-loan_status_distribution <- table(random_sampled_data$will_default)
-print(loan_status_distribution)
-
-paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distribution)) * 100
-
-cat("Percentage of loans that are paid off, when we do a random sample of 50,000:", round(paid_off_percentage, 2), "%\n")
-```
-Quite accurate as compared to the real world proportions. But by doing a random sample, we might not have enough readings for 1 as 30% is quite a small amount.
-
-#### Stratified
-Maybe we can do a 50/50 stratification to get a better sensing on real data?
-```{r}
-## Random 50/50 stratification 
-set.seed(123) 
-
-combined_data <- combined_data %>%
-  group_by(will_default) %>%
-  sample_n(size = 25000, replace = TRUE)  # 50% from each class, adjust size as needed
-
-# Check distribution
-table(combined_data$will_default)
-```
-1. Strat (50/50)
-2. Random
-Run these into models, and see which has lower classification error
-
-[ZH] I think we should just go with 50/50 stratification, because 30% is quite an underrepresented value.
-
 ## Reformatting the variables
 ### Employment length
 Convert employment length to an ordered categorical data
@@ -226,7 +149,6 @@ combined_data <- combined_data %>%
     last_pymnt_d = my(last_pymnt_d),
     issue_d = my(issue_d) 
   )
-
 ```
 But one thing we know is that models only take in either continuous or categorical data. Meaning that string and datetime data formats will not be handle correctly.
 
@@ -249,7 +171,141 @@ combined_data <- combined_data %>%
     issue_d_year = year(issue_d),
     issue_d_month = month(issue_d)
   )
+```
 
+### FRED data on Delinquency Rate on Consumer Loans, All Commercial Banks
+```{r}
+combined_data %>%
+  mutate(quarter = as.yearqtr(ymd(issue_d))) -> combined_data
+
+delinquency_rate <- read_csv("../data/DRCLACBS.csv") 
+delinquency_rate <- delinquency_rate %>%
+  rename("delinquency_rate" = "DRCLACBS") %>%
+  mutate(DATE = as.yearqtr(ymd(DATE)), lag_quarter = lag(DATE), lag_delinquency = lag(delinquency_rate))
+# We used lagged delinquency rate as it is likely at the point of issuance, one is not able to know the delinquency_rate for that period
+
+combined_data %>%
+  left_join(delinquency_rate, by = c("quarter" = "DATE")) -> combined_data
+```
+
+### FRED data on US 36-Month and 60-Month Treasury Yield to calculate the spread of interest rate on the consumer loan over the treasury yield in order to isolate changes in interest rate offered to consumers to the credit worthiness of a loan. There are only two durations of loans being offered: 36 months and 60 months.
+```{r}
+treasury_36mths <- read_csv("../data/DGS3.csv") 
+treasury_60mths <- read_csv("../data/DGS5.csv") 
+
+combined_data = combined_data %>%
+  left_join(treasury_36mths %>% rename(treasury_yield_36 = DGS3) %>% mutate(treasury_yield_36 = as.numeric(treasury_yield_36)), by = c("issue_d" = "DATE")) %>%
+  left_join(treasury_60mths %>% rename(treasury_yield_60 = DGS5), by = c("issue_d" = "DATE")) %>%
+  mutate(
+    treasury_yield = case_when(
+      str_detect(term, "36") ~ treasury_yield_36,
+      str_detect(term, "60") ~ treasury_yield_60,
+      TRUE ~ NA_real_  # NA for any term that doesn't match "36" or "60"
+    )
+  ) %>%
+  select(-treasury_yield_36, -treasury_yield_60)  %>% # Clean up intermediary columns if desired
+  mutate(spread = int_rate - treasury_yield)
+```
+
+### Lending Club Issued Loans (Benchmark)
+In this code chunk, we discover how successful Lending Club's internal ratings is at predicting default.
+We make the assumption that Lending Club predicts that the loan will not be defaulted when a rating of A to C is given, while a loan is predicted to be defaulted when a rating of D to G is given. From this, we can build a confusion matrix to find the recall and F1 score of their current internal metric.
+```{r}
+# Group by 'sub_grade' and count the number of defaults
+default_counts = combined_data %>%
+  select(sub_grade,will_default) %>%
+  group_by(sub_grade, will_default) %>%
+  summarize(count = n(), .groups = "drop") %>% 
+  pivot_wider(names_from = will_default, values_from = count, values_fill = 0) %>%
+  rename(defaulters = `1`, non_defaulters = `0`) %>%
+  mutate(
+    predicted_default = ifelse(grepl("^[A-C]", sub_grade), "predicted_non_default", "predicted_default")
+  )
+
+confusion_matrix <- default_counts %>%
+  group_by(predicted_default) %>%
+  summarize(
+    TP = sum(ifelse(predicted_default == "predicted_default", defaulters, 0)),  # True Positives
+    FP = sum(ifelse(predicted_default == "predicted_default", non_defaulters, 0)),  # False Positives
+    TN = sum(ifelse(predicted_default == "predicted_non_default", non_defaulters, 0)),  # True Negatives
+    FN = sum(ifelse(predicted_default == "predicted_non_default", defaulters, 0))   # False Negatives
+  ) %>%
+  summarize(
+    TP = sum(TP),
+    FP = sum(FP),
+    TN = sum(TN),
+    FN = sum(FN)
+  )
+
+# Calculate recall and F1 score
+recall <- confusion_matrix$TP / (confusion_matrix$TP + confusion_matrix$FN)
+precision <- confusion_matrix$TP / (confusion_matrix$TP + confusion_matrix$FP)
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Display the confusion matrix
+confusion_matrix_df <- data.frame(
+  Prediction = c("Predicted Default", "Predicted Non-Default"),
+  Actual_Default = c(confusion_matrix$TP, confusion_matrix$FN),
+  Actual_Non_Default = c(confusion_matrix$FP, confusion_matrix$TN)
+)
+
+print(confusion_matrix_df)
+
+# Output results
+list(recall = recall, F1_score = F1_score)
+```
+
+
+### Stratify the data based on the loan_status and get ~ 50,000 accordingly
+Random suggestion, compare the direct pulling of 50k data points vs stratified
+```{r}
+## Stratify data based on loan status
+# Set seed for reproducibility
+set.seed(42)
+
+# Stratified Sampling by 'loan status'
+strat_cols <- c("loan_status")
+
+# Perform the stratified sampling for training set (20%)
+train_data <- combined_data %>%
+  group_by(across(all_of(strat_cols))) %>%
+  sample_frac(0.2) %>% # Adjust the fraction as needed for training set
+  ungroup()
+
+# # Remaining data for test sets
+test_data <- anti_join(combined_data, train_data)
+```
+
+### Random pulling
+```{r}
+# Set the seed for reproducibility
+set.seed(4308)
+
+# Randomly sample 50,000 rows from the dataset, as it is getting way too large
+random_sampled_data <- combined_data %>%
+  sample_n(size = 50000)
+
+loan_status_distribution <- table(random_sampled_data$will_default)
+print(loan_status_distribution)
+
+paid_off_percentage <- (loan_status_distribution[1] / sum(loan_status_distribution)) * 100
+
+cat("Percentage of loans that are paid off, when we do a random sample of 50,000:", round(paid_off_percentage, 2), "%\n")
+```
+Quite accurate as compared to the real world proportions. But by doing a random sample, we might not have enough readings for 1 as 30% is quite a small amount.
+
+### Stratified
+Maybe we can do a 50/50 stratification to get a better sensing on real data?
+```{r}
+## Random 50/50 stratification 
+set.seed(123) 
+
+combined_data <- combined_data %>%
+  group_by(will_default) %>%
+  sample_n(size = 25000, replace = TRUE)  # 50% from each class, adjust size as needed
+
+# Check distribution
+table(combined_data$will_default)
 ```
 
 ## EDA
@@ -390,7 +446,7 @@ original_columns <- colnames(combined_data)
 
 combined_data <- combined_data %>%
   select(
-    loan_amnt, term, int_rate, installment, dti, pymnt_plan, 
+    loan_amnt, term, spread, installment, dti, pymnt_plan, 
     emp_length, home_ownership, annual_inc, verification_status,
     purpose, mths_since_last_delinq, mths_since_last_record, delinq_2yrs, 
     inq_last_6mths, open_acc, pub_rec, revol_bal, revol_util, total_acc,   
@@ -432,7 +488,6 @@ combined_data <- combined_data %>%
 factor_columns <- combined_data %>% select(where(is.factor))
 
 lapply(factor_columns, levels)
-
 ```
 
 ### Final check
