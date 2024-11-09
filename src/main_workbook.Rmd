@@ -19,7 +19,7 @@ library(caret)
 library(glmnet)
 library(xgboost)
 library(ParBayesianOptimization)
-library(doParallel)
+library(partykit)
 
 data <- readRDS("../data/combined_data.rds")
 ```
@@ -139,46 +139,39 @@ logit_f1_score <- calculate_f1_score(logit_confusion_matrix)
 cat("F1 Score", round(logit_f1_score, 4), "\n")
 ```
 
-
-
-## Decision tree with depth 7
+## Logistic Regression Tree (Decision Tree with logistic regression at its leaves)
 ### Creating the tree
 ```{r}
-decision_tree <- rpart(will_default ~ ., 
-                       data = train_data, 
-                       method = "class", 
-                       control = rpart.control(maxdepth = 7))
+set.seed(42)
 
+formula <- as.formula(paste("will_default ~ spread", paste(names(train_data[, c(-21, -3)]), 
+                            collapse = " + "), sep = " | "))
+
+glmtree.fit <- partykit::glmtree(formula = formula, data = train_data, family = binomial)
 ```
 
-### Print the tree
 ```{r}
-rpart.plot(decision_tree)
+# Generate predictions
+glmtree_predictions_prob = predict(glmtree.fit, test_data, type='response')
+glmtree_predictions = round(glmtree_predictions_prob)
 ```
-### Predict on test data
+
 ```{r}
-tree_predictions <- predict(decision_tree, test_data, type = "prob")[,2]
+glmtree_confusion_matrix <- table(test_data$will_default, glmtree_predictions)
+cat("GLM Tree Confusion Matrix: \n")
+print(glmtree_confusion_matrix)
+
+glmtree_accuracy <- calculate_accuracy(glmtree_confusion_matrix)
+cat("GLM Tree Accuracy:", round(glmtree_accuracy, 4), "\n")
+
+glmtree_fnr <- calculate_fnr(glmtree_confusion_matrix)
+cat("GLM Tree False Negative Rate:", round(glmtree_fnr, 4), "\n")
+
+glmtree_f1_score <- calculate_f1_score(glmtree_confusion_matrix)
+cat("GLM Tree F1 Score:", round(glmtree_f1_score, 4), "\n")
 ```
 
-### Confusion Matrix
-```{r}
-confusion_matrix <- table(test_data$will_default, tree_predictions)
-print("Confusion Matrix:")
-print(confusion_matrix)
 
-accuracy <- calculate_accuracy(confusion_matrix)
-cat("Accuracy:", round(accuracy, 4), "\n")
-
-false_negative <- calculate_fnr(confusion_matrix)
-cat("False Negatives (FN):", false_negative, "\n")
-cat("False Negative Percentage:", round(false_negative, 2), "%\n")
-
-recall <- calculate_recall(confusion_matrix)
-cat("Recall:", round(recall, 4), "\n")
-
-f1_score <- calculate_f1_score(confusion_matrix)
-cat("F1 Score", round(f1_score, 4), "\n")
-```
 ## Random Forest
 ```{r}
 
@@ -379,17 +372,8 @@ params_bounds = list(max_depth = c(3L, 9L),
                      colsample_bytree = c(0.7, 1))
 
 
-# cluster = makeCluster(detectCores()/2)
-# registerDoParallel(cluster)
-# clusterExport(cluster, c('train_data', 'params_bounds', 'dtrain'))
-# clusterEvalQ(cluster, expr = {library(xgboost)})
-
-
-# Opt for 5 epochs of tuning
-params_opt = bayesOpt(FUN = score, bounds = params_bounds, initPoints = 8, iters.n = 5)
-
-# stopCluster(cluster)
-# registerDoSEQ()
+# Opt for 10 epochs of tuning
+params_opt = bayesOpt(FUN = score, bounds = params_bounds, initPoints = 8, iters.n = 10)
 
 params = list(max_depth = getBestPars(params_opt)$max_depth,
               eta = getBestPars(params_opt)$eta,
@@ -399,12 +383,12 @@ params = list(max_depth = getBestPars(params_opt)$max_depth,
               colsample_bytree = getBestPars(params_opt)$colsample_bytree,
               booster = "gbtree", 
               objective = "binary:logistic", 
-              eval_metric = "aucpr", 
-              scale_pos_weight = weights, 
+              eval_metric = "aucpr",
               verbose = 0)
 
 nrounds = params_opt$scoreSummary[which(params_opt$scoreSummary$Score == max(params_opt$scoreSummary$Score))]$nrounds[1]
 ```
+
 ```{r}
 # Generate predictions using the parameters obtained from tuning
 watchlist = list(train = dtrain, test = dtest)
@@ -418,6 +402,7 @@ set.seed(123)
 xgboost_pred_tuned_prob = predict(xgboost.fit_tuned, dtest)
 xgboost_pred_tuned = round(xgboost_pred_tuned_prob)
 ```
+
 ```{r}
 xgb_confusion_matrix_tuned <- table(test_data$will_default, xgboost_pred_tuned)
 cat("XGBoost Confusion Matrix:\n")
@@ -437,7 +422,6 @@ cat("XGBoost F1 Score (post-Tuning):", round(xgb_f1_score_tuned, 4), "\n")
 ```
 
 
-
 ## Final Comparison
 ### Recall Precision Plot
 ```{r}
@@ -447,12 +431,6 @@ plot_data <- data.frame(recall = numeric(), precision = numeric(), model = chara
 calculate_precision_recall <- function(probs, labels, model_name) {
   roc_obj <- roc(labels, probs)
   pr_data <- coords(roc_obj, x = "all", ret = c("recall", "precision"), transpose = FALSE)
-  
-  # if (model_name == "Decision Tree") {
-  #   # Replace NaN precision values with zero
-  #   pr_data$precision[is.nan(pr_data$precision)] <- 1
-  # }
-  
   data.frame(Recall = pr_data$recall, Precision = pr_data$precision, Model = model_name)
 }
 
@@ -460,8 +438,8 @@ calculate_precision_recall <- function(probs, labels, model_name) {
 logit_pr <- calculate_precision_recall(logit_predictions_prob, test_data$will_default, "Logistic Regression")
 plot_data <- rbind(plot_data, logit_pr)
 
-# Model 2: Decision Tree
-tree_pr <- calculate_precision_recall(tree_predictions, test_data$will_default, "Decision Tree")
+# Model 2: Logistic Regression Trees
+tree_pr <- calculate_precision_recall(glmtree_predictions_prob, test_data$will_default, "Logistic Regression Trees")
 plot_data <- rbind(plot_data, tree_pr)
 
 # Model 3: Random Forest
@@ -501,7 +479,7 @@ results_table <- data.frame(
 
 models <- list(
   list(name = "Logistic Regression", predictions = logit_predictions),
-  list(name = "Decision Tree", predictions = predict(decision_tree, test_data, type = "class")),
+  list(name = "Logistic Regression Trees", predictions = glmtree_predictions),
   list(name = "Random Forest", predictions = predict(rf, test_data, type = "class")),
   list(name = "LASSO", predictions = predict(lasso_model, x_test, type = "class")),
   list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class")),
