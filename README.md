@@ -69,7 +69,7 @@ Before running the project, make sure to install the following R packages on you
 ```r
 install.packages(c("tidyverse", "jsonlite", "lubridate", "zoo", "rpart", 
                    "rpart.plot", "randomForest", "pROC", "caret", "glmnet", 
-                   "xgboost", "ParBayesianOptimization", "doParallel"))
+                   "xgboost", "ParBayesianOptimization", "doParallel")) ```
 
 
 
