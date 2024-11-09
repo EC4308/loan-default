@@ -65,10 +65,13 @@ After cleaning the data, proceed to run main_workbook.Rmd. This file contains th
 Before running the project, make sure to install the following R packages on your local device:
 
 ### Required Libraries
+
 ```r
 install.packages(c("tidyverse", "jsonlite", "lubridate", "zoo", "rpart", 
                    "rpart.plot", "randomForest", "pROC", "caret", "glmnet", 
-                   "xgboost", "ParBayesianOptimization", "doParallel")) '''r
+                   "xgboost", "ParBayesianOptimization", "doParallel"))
+
+
 
 Feel free to reach out if you encounter any issues or have questions about the setup!
 
