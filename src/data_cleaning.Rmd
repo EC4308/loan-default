@@ -421,8 +421,7 @@ combined_data <- combined_data %>%
          term = as.factor(term),
          addr_state = as.factor(addr_state),
          application_type = as.factor(application_type),
-         will_default = as.factor(will_default),
-         grade = as.factor(grade)
+         will_default = as.factor(will_default)
          )
 
 combined_data <- combined_data %>%
