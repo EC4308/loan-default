@@ -209,7 +209,7 @@ combined_data = combined_data %>%
 
 ### Lending Club Issued Loans (Benchmark)
 In this code chunk, we discover how successful Lending Club's internal ratings is at predicting default.
-We make the assumption that Lending Club predicts that the loan will not be defaulted when a rating of A to C is given, while a loan will be defaulted when a rating of D to G is given. From this, we can build a confusion matrix to find the recall and F1 score of their current internal metric.
+We make the assumption that Lending Club predicts that the loan will not be defaulted when a rating of A to C is given, while a loan is predicted to be defaulted when a rating of D to G is given. From this, we can build a confusion matrix to find the recall and F1 score of their current internal metric.
 ```{r}
 # Group by 'sub_grade' and count the number of defaults
 default_counts = combined_data %>%
