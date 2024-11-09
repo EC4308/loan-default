@@ -30,18 +30,17 @@ set.seed(123)
 n <- nrow(data)  
 
 # Define the proportion for each set
-train_ratio <- 0.6  # 60% for training
-validation_ratio <- 0.2  # 20% for validation
+train_ratio <- 0.8  # 80% for training
 test_ratio <- 0.2  # 20% for testing
 
+# Generate indices for the training set
 train_indices <- sample(seq_len(n), size = train_ratio * n)
-remaining_indices <- setdiff(seq_len(n), train_indices)
 
-validation_indices <- sample(remaining_indices, size = validation_ratio * n)
-test_indices <- setdiff(remaining_indices, validation_indices)
+# Remaining indices will be used for the test set
+test_indices <- setdiff(seq_len(n), train_indices)
 
+# Create training and testing datasets
 train_data <- data[train_indices, ]
-validation_data <- data[validation_indices, ]
 test_data <- data[test_indices, ]
 
 # Replace NA values with 0 in both train and test datasets
@@ -50,7 +49,6 @@ test_data <- test_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .))
 
 #Check the sizes of each set
 cat("Train size: ", nrow(train_data), "\n")
-cat("Validation size: ", nrow(validation_data), "\n")
 cat("Test size: ", nrow(test_data), "\n")
 
 ```
@@ -110,7 +108,8 @@ logit.fit = glm(will_default ~ ., data=train_data, family="binomial")
 summary(logit.fit)
 
 # Generate predictions
-logit_predictions = round(predict(logit.fit, test_data, type='response'))
+logit_predictions_prob = predict(logit.fit, test_data, type='response')
+logit_predictions = round(logit_predictions_prob)
 ```
 ## Metrics
 ```{r}
@@ -136,7 +135,7 @@ cat("F1 Score", round(logit_f1_score, 4), "\n")
 ## Decision tree with depth 7
 ### Creating the tree
 ```{r}
-decision_tree.fit <- rpart(will_default ~ ., 
+decision_tree <- rpart(will_default ~ ., 
                        data = train_data, 
                        method = "class", 
                        control = rpart.control(maxdepth = 7))
@@ -145,11 +144,11 @@ decision_tree.fit <- rpart(will_default ~ .,
 
 ### Print the tree
 ```{r}
-rpart.plot(decision_tree.fit)
+rpart.plot(decision_tree)
 ```
 ### Predict on test data
 ```{r}
-tree_predictions <- predict(decision_tree.fit, test_data, type = "prob")[,2]
+tree_predictions <- predict(decision_tree, test_data, type = "prob")[,2]
 ```
 
 ### Confusion Matrix
@@ -228,8 +227,6 @@ cat("F1 Score", round(f1_score, 4), "\n")
 
 ```
 
-## xgboost
-
 ## LASSO Classifier
 ```{r}
 # Perform 10 fold CV to determine lambda
@@ -249,6 +246,7 @@ lasso_model <- glmnet(x_train, y_train, family = "binomial", alpha = 1, lambda =
 ### Prediction
 ```{r}
 lasso_predictions <- predict(lasso_model, x_test, type = "class")
+lasso_predictions_prob <- predict(lasso_model, x_test, type = "response")
 ```
 
 ### Metrics
@@ -280,6 +278,7 @@ ridge_model <- glmnet(x_train, y_train, family = "binomial", alpha = 0, lambda =
 ###Prediction
 ```{r}
 ridge_predictions <- predict(ridge_model, newx = x_test, type = "class")
+ridge_predictions_prob <- predict(ridge_model, newx = x_test, type = "response")
 ```
 
 ### Metrics
@@ -298,6 +297,12 @@ ridge_f1_score <- calculate_f1_score(ridge_confusion_matrix)
 cat("Ridge F1 Score:", round(ridge_f1_score, 4), "\n")
 ```
 
+## XGBoost
+```{r}
+
+```
+
+
 ## Final Comparison
 ### Recall Precision Plot
 ```{r}
@@ -307,11 +312,17 @@ plot_data <- data.frame(recall = numeric(), precision = numeric(), model = chara
 calculate_precision_recall <- function(probs, labels, model_name) {
   roc_obj <- roc(labels, probs)
   pr_data <- coords(roc_obj, x = "all", ret = c("recall", "precision"), transpose = FALSE)
+  
+  # if (model_name == "Decision Tree") {
+  #   # Replace NaN precision values with zero
+  #   pr_data$precision[is.nan(pr_data$precision)] <- 1
+  # }
+  
   data.frame(Recall = pr_data$recall, Precision = pr_data$precision, Model = model_name)
 }
 
 # Model 1: Logistic Regression
-logit_pr <- calculate_precision_recall(logit_predictions, test_data$will_default, "Logistic Regression")
+logit_pr <- calculate_precision_recall(logit_predictions_prob, test_data$will_default, "Logistic Regression")
 plot_data <- rbind(plot_data, logit_pr)
 
 # Model 2: Decision Tree
@@ -323,11 +334,11 @@ rf_pr <- calculate_precision_recall(rf_predictions, test_data$will_default, "Ran
 plot_data <- rbind(plot_data, rf_pr)
 
 # Model 4: LASSO
-lasso_plot <- calculate_precision_recall(as.numeric(lasso_predictions), y_test, "LASSO")
+lasso_pr <- calculate_precision_recall(lasso_predictions_prob, y_test, "LASSO")
 plot_data <- rbind(plot_data, lasso_pr)
 
 # Model 5: Ridge
-ridge_plot <- calculate_precision_recall(as.numeric(ridge_predictions), y_test, "Ridge")
+ridge_pr <- calculate_precision_recall(ridge_predictions_prob , y_test, "Ridge")
 plot_data <- rbind(plot_data, ridge_pr)
 
 ggplot(plot_data, aes(x = Recall, y = Precision, color = Model)) +
