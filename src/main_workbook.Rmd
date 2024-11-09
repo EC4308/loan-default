@@ -171,7 +171,7 @@ cat("Recall:", round(recall, 4), "\n")
 f1_score <- calculate_f1_score(confusion_matrix)
 cat("F1 Score", round(f1_score, 4), "\n")
 ```
-## ML Model 1: Random Forest
+## Random Forest
 ```{r}
 
 rf <- randomForest(will_default ~ ., 
@@ -184,14 +184,27 @@ rf <- randomForest(will_default ~ .,
 
 ### Importance plot
 ```{r}
-# Predict on the test data
 importance(rf)
 varImpPlot(rf)
-
 ```
+### Visualize class specific error rates by ntree
+```{r}
+ntree.error = data.frame(ntrees = rep(1:nrow(rf$err.rate), times = 3),
+                       class = rep(c("OOB", "Did not default", "Default"), each = nrow(rf$err.rate)),
+                       error = c(rf$err.rate[, "OOB"], rf$err.rate[, "0"], rf$err.rate[, "1"])
+                        )
+# OOB error rate refers to the average error rate calculated on OOB samples
+# Each tree in the RF sees only a subset of data, hence the OOB samples serve as a validation set to estimate the model's error during training
+
+ggplot(ntree.error, aes(x = ntrees, y = error, color = class)) +
+  geom_line() +
+  ggtitle("Training Error Rates")
+```
+We can see that the class specific error rate stabilizes at around 400 trees. The "Did not default" error rates lying above the OOB and "Default" error rates do seem to suggest that the model is relatively more accurate at predicting defaults than it is at correctly predicting the overall dataset, i.e. the RF model seems to struggle more at correctly identifying samples that did not default.
+
 ### Prediction
 ```{r}
-# Confusion matrix
+# Predict on test data
 rf_predictions <- predict(rf, test_data, type = "prob")[,2]
 ```
 
