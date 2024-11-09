@@ -7,21 +7,17 @@ output: html_document
 
 ## Initial setup
 ```{r setup, include=FALSE}
-library(readr)
 library(tidyverse)
 library(jsonlite)
 library(lubridate)
 library(zoo)
-library(dplyr)
 library(rpart)
 library(rpart.plot)
 library(randomForest)
 library(pROC)
 library(caret)
 library(glmnet)
-library(ggplot2)
-library(dplyr)
-library(pROC)
+library(xgboost)
 
 data <- readRDS("../data/combined_data.rds")
 ```
@@ -104,31 +100,61 @@ calculate_f1_score <- function(confusion_matrix) {
 
 ```
 
-
-## Baseline model - Decision tree with depth 7
+## Baseline Model - Logistic Regression
 For refresher purposes, 0 is a good loan, 1 is a bad loan
+```{r}
+#Fitting logistic regression model using all variables
+set.seed(42)
+logit.fit = glm(will_default ~ ., data=train_data, family="binomial")
+
+summary(logit.fit)
+
+# Generate predictions
+logit_predictions = round(predict(logit.fit, test_data, type='response'))
+```
+## Metrics
+```{r}
+logit_confusion_matrix <- table(test_data$will_default, logit_predictions)
+print("Confusion Matrix:")
+print(logit_confusion_matrix)
+
+logit_accuracy <- calculate_accuracy(logit_confusion_matrix)
+cat("Accuracy:", round(logit_accuracy, 4), "\n")
+
+logit_fnr <- calculate_fnr(logit_confusion_matrix)
+cat("False Negatives (FN):", logit_fnr, "\n")
+
+logit_recall <- calculate_recall(logit_confusion_matrix)
+cat("Recall:", round(logit_recall, 4), "\n")
+
+logit_f1_score <- calculate_f1_score(logit_confusion_matrix)
+cat("F1 Score", round(logit_f1_score, 4), "\n")
+```
+
+
+
+## Decision tree with depth 7
 ### Creating the tree
 ```{r}
-baseline_tree <- rpart(will_default ~ ., 
+decision_tree.fit <- rpart(will_default ~ ., 
                        data = train_data, 
                        method = "class", 
                        control = rpart.control(maxdepth = 7))
 
 ```
 
-
 ### Print the tree
 ```{r}
-rpart.plot(baseline_tree)
+rpart.plot(decision_tree.fit)
 ```
 ### Predict on test data
 ```{r}
-tree_predictions <- predict(baseline_tree, test_data, type = "prob")[,2]
+tree_predictions <- predict(decision_tree.fit, test_data, type = "prob")[,2]
 ```
 
 ### Confusion Matrix
 ```{r}
-confusion_matrix <- table(test_data$will_default, predictions)
+confusion_matrix <- table(test_data$will_default, tree_predictions)
 print("Confusion Matrix:")
 print(confusion_matrix)
 
@@ -227,6 +253,7 @@ cat("LASSO False Negative Rate:", round(lasso_fnr, 4), "\n")
 lasso_f1_score <- calculate_f1_score(lasso_confusion_matrix)
 cat("LASSO F1 Score:", round(lasso_f1_score, 4), "\n")
 ```
+
 ## Ridge Classifier
 ```{r}
 # Perform 10 fold CV to determine lambda
@@ -264,25 +291,29 @@ cat("Ridge F1 Score:", round(ridge_f1_score, 4), "\n")
 plot_data <- data.frame(recall = numeric(), precision = numeric(), model = character())
 
 # Function to calculate precision and recall
-precision_recall <- function(probs, labels, model_name) {
+calculate_precision_recall <- function(probs, labels, model_name) {
   roc_obj <- roc(labels, probs)
   pr_data <- coords(roc_obj, x = "all", ret = c("recall", "precision"), transpose = FALSE)
   data.frame(Recall = pr_data$recall, Precision = pr_data$precision, Model = model_name)
 }
 
-# Model 1: Decision Tree
+# Model 1: Logistic Regression
+logit_pr <- calculate_precision_recall(logit_predictions, test_data$will_default, "Logistic Regression")
+plot_data <- rbind(plot_data, logit_pr)
+
+# Model 2: Decision Tree
 tree_pr <- calculate_precision_recall(tree_predictions, test_data$will_default, "Decision Tree")
 plot_data <- rbind(plot_data, tree_pr)
 
-# Model 2: Random Forest
+# Model 3: Random Forest
 rf_pr <- calculate_precision_recall(rf_predictions, test_data$will_default, "Random Forest")
 plot_data <- rbind(plot_data, rf_pr)
 
-# Model 3: LASSO
+# Model 4: LASSO
 lasso_plot <- calculate_precision_recall(as.numeric(lasso_predictions), y_test, "LASSO")
 plot_data <- rbind(plot_data, lasso_pr)
 
-# Model 4: Ridge
+# Model 5: Ridge
 ridge_plot <- calculate_precision_recall(as.numeric(ridge_predictions), y_test, "Ridge")
 plot_data <- rbind(plot_data, ridge_pr)
 
