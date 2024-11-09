@@ -207,55 +207,6 @@ combined_data = combined_data %>%
   mutate(spread = int_rate - treasury_yield)
 ```
 
-### Lending Club Issued Loans (Benchmark)
-In this code chunk, we discover how successful Lending Club's internal ratings is at predicting default.
-We make the assumption that Lending Club predicts that the loan will not be defaulted when a rating of A to C is given, while a loan is predicted to be defaulted when a rating of D to G is given. From this, we can build a confusion matrix to find the recall and F1 score of their current internal metric.
-```{r}
-# Group by 'sub_grade' and count the number of defaults
-default_counts = combined_data %>%
-  select(sub_grade,will_default) %>%
-  group_by(sub_grade, will_default) %>%
-  summarize(count = n(), .groups = "drop") %>% 
-  pivot_wider(names_from = will_default, values_from = count, values_fill = 0) %>%
-  rename(defaulters = `1`, non_defaulters = `0`) %>%
-  mutate(
-    predicted_default = ifelse(grepl("^[A-C]", sub_grade), "predicted_non_default", "predicted_default")
-  )
-
-confusion_matrix <- default_counts %>%
-  group_by(predicted_default) %>%
-  summarize(
-    TP = sum(ifelse(predicted_default == "predicted_default", defaulters, 0)),  # True Positives
-    FP = sum(ifelse(predicted_default == "predicted_default", non_defaulters, 0)),  # False Positives
-    TN = sum(ifelse(predicted_default == "predicted_non_default", non_defaulters, 0)),  # True Negatives
-    FN = sum(ifelse(predicted_default == "predicted_non_default", defaulters, 0))   # False Negatives
-  ) %>%
-  summarize(
-    TP = sum(TP),
-    FP = sum(FP),
-    TN = sum(TN),
-    FN = sum(FN)
-  )
-
-# Calculate recall and F1 score
-recall <- confusion_matrix$TP / (confusion_matrix$TP + confusion_matrix$FN)
-precision <- confusion_matrix$TP / (confusion_matrix$TP + confusion_matrix$FP)
-F1_score <- 2 * (precision * recall) / (precision + recall)
-
-# Display the confusion matrix
-confusion_matrix_df <- data.frame(
-  Prediction = c("Predicted Default", "Predicted Non-Default"),
-  Actual_Default = c(confusion_matrix$TP, confusion_matrix$FN),
-  Actual_Non_Default = c(confusion_matrix$FP, confusion_matrix$TN)
-)
-
-print(confusion_matrix_df)
-
-# Output results
-list(recall = recall, F1_score = F1_score)
-```
-
-
 ### Stratify the data based on the loan_status and get ~ 50,000 accordingly
 Random suggestion, compare the direct pulling of 50k data points vs stratified
 ```{r}
@@ -446,7 +397,7 @@ original_columns <- colnames(combined_data)
 
 combined_data <- combined_data %>%
   select(
-    loan_amnt, term, spread, installment, dti, pymnt_plan, 
+    loan_amnt, term, spread, grade, installment, dti, pymnt_plan, 
     emp_length, home_ownership, annual_inc, verification_status,
     purpose, mths_since_last_delinq, mths_since_last_record, delinq_2yrs, 
     inq_last_6mths, open_acc, pub_rec, revol_bal, revol_util, total_acc,   
@@ -470,7 +421,8 @@ combined_data <- combined_data %>%
          term = as.factor(term),
          addr_state = as.factor(addr_state),
          application_type = as.factor(application_type),
-         will_default = as.factor(will_default)
+         will_default = as.factor(will_default),
+         grade = as.factor(grade)
          )
 
 combined_data <- combined_data %>%
@@ -479,8 +431,6 @@ combined_data <- combined_data %>%
                                    "INDIVIDUAL" = "Individual",
                                    "Joint App" = "Joint",
                                    "JOINT" = "Joint"))
-
-
 ```
 
 ### Check the levels
