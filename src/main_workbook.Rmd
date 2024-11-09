@@ -480,9 +480,9 @@ results_table <- data.frame(
 models <- list(
   list(name = "Logistic Regression", predictions = logit_predictions),
   list(name = "Logistic Regression Trees", predictions = glmtree_predictions),
-  list(name = "Random Forest", predictions = predict(rf, test_data, type = "class")),
-  list(name = "LASSO", predictions = predict(lasso_model, x_test, type = "class")),
-  list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class")),
+  list(name = "Random Forest", predictions = rf_predictions),
+  list(name = "LASSO", predictions = lasso_predictions),
+  list(name = "Ridge", predictions = ridge_predictions),
   list(name = "XGBoost", predictions = xgboost_pred_tuned)
 )
 
