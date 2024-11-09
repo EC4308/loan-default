@@ -7,24 +7,28 @@ output: html_document
 
 ## Initial setup
 ```{r setup, include=FALSE}
-library(readr)
 library(tidyverse)
 library(jsonlite)
 library(lubridate)
 library(zoo)
-library(dplyr)
 library(rpart)
 library(rpart.plot)
 library(randomForest)
 library(pROC)
 library(caret)
 library(glmnet)
-library(ggplot2)
-library(dplyr)
-library(pROC)
+library(xgboost)
+library(ParBayesianOptimization)
+library(doParallel)
 
 data <- readRDS("../data/combined_data.rds")
 ```
+
+```{r}
+# Encode `purpose` column
+data$purpose = as.numeric(as.factor(data$purpose))
+```
+
 
 ## Training/Test Split
 ```{r}
@@ -34,18 +38,17 @@ set.seed(123)
 n <- nrow(data)  
 
 # Define the proportion for each set
-train_ratio <- 0.6  # 60% for training
-validation_ratio <- 0.2  # 20% for validation
+train_ratio <- 0.8  # 80% for training
 test_ratio <- 0.2  # 20% for testing
 
+# Generate indices for the training set
 train_indices <- sample(seq_len(n), size = train_ratio * n)
-remaining_indices <- setdiff(seq_len(n), train_indices)
 
-validation_indices <- sample(remaining_indices, size = validation_ratio * n)
-test_indices <- setdiff(remaining_indices, validation_indices)
+# Remaining indices will be used for the test set
+test_indices <- setdiff(seq_len(n), train_indices)
 
+# Create training and testing datasets
 train_data <- data[train_indices, ]
-validation_data <- data[validation_indices, ]
 test_data <- data[test_indices, ]
 
 # Replace NA values with 0 in both train and test datasets
@@ -54,10 +57,10 @@ test_data <- test_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .))
 
 #Check the sizes of each set
 cat("Train size: ", nrow(train_data), "\n")
-cat("Validation size: ", nrow(validation_data), "\n")
 cat("Test size: ", nrow(test_data), "\n")
 
 ```
+
 
 ## Calculation metrics
 Below are the functions used to calculate the metrics
@@ -104,31 +107,62 @@ calculate_f1_score <- function(confusion_matrix) {
 
 ```
 
-
-## Baseline model - Decision tree with depth 7
+## Baseline Model - Logistic Regression
 For refresher purposes, 0 is a good loan, 1 is a bad loan
+```{r}
+#Fitting logistic regression model using all variables
+set.seed(42)
+logit.fit = glm(will_default ~ ., data=train_data, family="binomial")
+
+summary(logit.fit)
+
+# Generate predictions
+logit_predictions_prob = predict(logit.fit, test_data, type='response')
+logit_predictions = round(logit_predictions_prob)
+```
+## Metrics
+```{r}
+logit_confusion_matrix <- table(test_data$will_default, logit_predictions)
+print("Confusion Matrix:")
+print(logit_confusion_matrix)
+
+logit_accuracy <- calculate_accuracy(logit_confusion_matrix)
+cat("Accuracy:", round(logit_accuracy, 4), "\n")
+
+logit_fnr <- calculate_fnr(logit_confusion_matrix)
+cat("False Negatives (FN):", logit_fnr, "\n")
+
+logit_recall <- calculate_recall(logit_confusion_matrix)
+cat("Recall:", round(logit_recall, 4), "\n")
+
+logit_f1_score <- calculate_f1_score(logit_confusion_matrix)
+cat("F1 Score", round(logit_f1_score, 4), "\n")
+```
+
+
+
+## Decision tree with depth 7
 ### Creating the tree
 ```{r}
-baseline_tree <- rpart(will_default ~ ., 
+decision_tree <- rpart(will_default ~ ., 
                        data = train_data, 
                        method = "class", 
                        control = rpart.control(maxdepth = 7))
 
 ```
 
-
 ### Print the tree
 ```{r}
-rpart.plot(baseline_tree)
+rpart.plot(decision_tree)
 ```
 ### Predict on test data
 ```{r}
-tree_predictions <- predict(baseline_tree, test_data, type = "prob")[,2]
+tree_predictions <- predict(decision_tree, test_data, type = "prob")[,2]
 ```
 
 ### Confusion Matrix
 ```{r}
-confusion_matrix <- table(test_data$will_default, predictions)
+confusion_matrix <- table(test_data$will_default, tree_predictions)
 print("Confusion Matrix:")
 print(confusion_matrix)
 
@@ -145,7 +179,7 @@ cat("Recall:", round(recall, 4), "\n")
 f1_score <- calculate_f1_score(confusion_matrix)
 cat("F1 Score", round(f1_score, 4), "\n")
 ```
-## ML Model 1: Random Forest
+## Random Forest
 ```{r}
 
 rf <- randomForest(will_default ~ ., 
@@ -158,15 +192,29 @@ rf <- randomForest(will_default ~ .,
 
 ### Importance plot
 ```{r}
-# Predict on the test data
 importance(rf)
 varImpPlot(rf)
-
 ```
+### Visualize class specific error rates by ntree
+```{r}
+ntree.error = data.frame(ntrees = rep(1:nrow(rf$err.rate), times = 3),
+                       class = rep(c("OOB", "Did not default", "Default"), each = nrow(rf$err.rate)),
+                       error = c(rf$err.rate[, "OOB"], rf$err.rate[, "0"], rf$err.rate[, "1"])
+                        )
+# OOB error rate refers to the average error rate calculated on OOB samples
+# Each tree in the RF sees only a subset of data, hence the OOB samples serve as a validation set to estimate the model's error during training
+
+ggplot(ntree.error, aes(x = ntrees, y = error, color = class)) +
+  geom_line() +
+  ggtitle("Training Error Rates")
+```
+We can see that the class specific error rate stabilizes at around 400 trees. The "Did not default" error rates lying above the OOB and "Default" error rates do seem to suggest that the model is relatively more accurate at predicting defaults than it is at correctly predicting the overall dataset, i.e. the RF model seems to struggle more at correctly identifying samples that did not default.
+
 ### Prediction
 ```{r}
-# Confusion matrix
-rf_predictions <- predict(rf, test_data, type = "prob")[,2]
+# Predict on test data
+rf_predictions_prob <- predict(rf, test_data, type = "prob")[,2]
+rf_predictions <- round(rf_predictions_prob)
 ```
 
 ### Metrics
@@ -189,8 +237,6 @@ cat("F1 Score", round(f1_score, 4), "\n")
 
 ```
 
-## xgboost
-
 ## LASSO Classifier
 ```{r}
 # Perform 10 fold CV to determine lambda
@@ -210,6 +256,7 @@ lasso_model <- glmnet(x_train, y_train, family = "binomial", alpha = 1, lambda =
 ### Prediction
 ```{r}
 lasso_predictions <- predict(lasso_model, x_test, type = "class")
+lasso_predictions_prob <- predict(lasso_model, x_test, type = "response")
 ```
 
 ### Metrics
@@ -227,6 +274,7 @@ cat("LASSO False Negative Rate:", round(lasso_fnr, 4), "\n")
 lasso_f1_score <- calculate_f1_score(lasso_confusion_matrix)
 cat("LASSO F1 Score:", round(lasso_f1_score, 4), "\n")
 ```
+
 ## Ridge Classifier
 ```{r}
 # Perform 10 fold CV to determine lambda
@@ -240,6 +288,7 @@ ridge_model <- glmnet(x_train, y_train, family = "binomial", alpha = 0, lambda =
 ###Prediction
 ```{r}
 ridge_predictions <- predict(ridge_model, newx = x_test, type = "class")
+ridge_predictions_prob <- predict(ridge_model, newx = x_test, type = "response")
 ```
 
 ### Metrics
@@ -258,33 +307,178 @@ ridge_f1_score <- calculate_f1_score(ridge_confusion_matrix)
 cat("Ridge F1 Score:", round(ridge_f1_score, 4), "\n")
 ```
 
+## XGBoost
+```{r}
+dtrain <- xgb.DMatrix(data=data.matrix(train_data[, -21]),
+                      label=as.numeric(train_data$will_default)-1
+                      )
+
+dtest <- xgb.DMatrix(data=data.matrix(test_data[, -21]),
+                      label=as.numeric(test_data$will_default)-1
+                      )
+```
+
+First, we fit a base XGBoost model so we can compare our pre- and post-tuning performance
+```{r}
+xgboost.fit_base <- xgboost(data = dtrain,
+                            nrounds=100,
+                            objective='binary:logistic')
+
+xgboost_pred_prob <- predict(xgboost.fit_base, dtest)
+xgboost_pred <- round(xgboost_pred_prob)
+
+
+xgb_confusion_matrix <- table(test_data$will_default, xgboost_pred)
+cat("XGBoost Confusion Matrix:\n")
+print(xgb_confusion_matrix)
+
+xgb_accuracy <- calculate_accuracy(xgb_confusion_matrix)
+cat("XGBoost Accuracy:", round(xgb_accuracy, 4), "\n")
+
+xgb_fnr <- calculate_fnr(xgb_confusion_matrix)
+cat("XGBoost False Negative Rate:", round(xgb_fnr, 4), "\n")
+
+xgb_f1_score <- calculate_f1_score(xgb_confusion_matrix)
+cat("XGBoost F1 Score:", round(xgb_f1_score, 4), "\n")
+```
+
+Now, we can try tuning an XGBoost model. Here, we attempt to use the Bayesian Optimization method; it should ideally be much faster than a standard grid or randomized search as it targets areas of the parameter space with the highest likelihood of improvement.
+
+```{r}
+# Bayes Optimization of XGBoost hyperparameters  by maximizing area under precision-recall curve
+score = function(max_depth, eta, gamma, min_child_weight, subsample, colsample_bytree) {
+  params = list(max_depth = max_depth,
+                eta = eta,
+                gamma = gamma,
+                min_child_weight = min_child_weight, 
+                subsample = subsample, 
+                colsample_bytree = colsample_bytree,
+                booster = "gbtree", 
+                objective = "binary:logistic", 
+                eval_metric = "aucpr", 
+                verbose = 1)
+  
+  set.seed(42)
+  crossval.xgb = xgb.cv(params = params, 
+                        data = dtrain, 
+                        nrounds = 100, 
+                        prediction = TRUE, 
+                        early_stopping_rounds = 10, 
+                        nfold = 3, 
+                        maximize = TRUE)
+  
+  return(list(Score = max(crossval.xgb$evaluation_log$test_aucpr_mean), nrounds = crossval.xgb$best_iteration))
+}
+
+# We specify the upper and lower bounds for each hyperparameter tuning range
+params_bounds = list(max_depth = c(3L, 9L),
+                     eta = c(0.1, 0.3),
+                     gamma = c(0, 1),
+                     min_child_weight = c(1, 5),
+                     subsample = c(0.7, 1),
+                     colsample_bytree = c(0.7, 1))
+
+
+# cluster = makeCluster(detectCores()/2)
+# registerDoParallel(cluster)
+# clusterExport(cluster, c('train_data', 'params_bounds', 'dtrain'))
+# clusterEvalQ(cluster, expr = {library(xgboost)})
+
+
+# Opt for 5 epochs of tuning
+params_opt = bayesOpt(FUN = score, bounds = params_bounds, initPoints = 8, iters.n = 5)
+
+# stopCluster(cluster)
+# registerDoSEQ()
+
+params = list(max_depth = getBestPars(params_opt)$max_depth,
+              eta = getBestPars(params_opt)$eta,
+              gamma = getBestPars(params_opt)$gamma,
+              min_child_weight = getBestPars(params_opt)$min_child_weight,
+              subsample = getBestPars(params_opt)$subsample,
+              colsample_bytree = getBestPars(params_opt)$colsample_bytree,
+              booster = "gbtree", 
+              objective = "binary:logistic", 
+              eval_metric = "aucpr", 
+              scale_pos_weight = weights, 
+              verbose = 0)
+
+nrounds = params_opt$scoreSummary[which(params_opt$scoreSummary$Score == max(params_opt$scoreSummary$Score))]$nrounds[1]
+```
+```{r}
+# Generate predictions using the parameters obtained from tuning
+watchlist = list(train = dtrain, test = dtest)
+xgboost.fit_tuned = xgb.train(params = params, 
+                                 data = dtrain,
+                                 nrounds = nrounds,
+                                 watchlist = watchlist,
+                                 early_stopping_rounds = 10,
+                                 print_every_n = 10)
+set.seed(123)
+xgboost_pred_tuned_prob = predict(xgboost.fit_tuned, dtest)
+xgboost_pred_tuned = round(xgboost_pred_tuned_prob)
+```
+```{r}
+xgb_confusion_matrix_tuned <- table(test_data$will_default, xgboost_pred_tuned)
+cat("XGBoost Confusion Matrix:\n")
+print(xgb_confusion_matrix_tuned)
+
+xgb_accuracy_tuned <- calculate_accuracy(xgb_confusion_matrix_tuned)
+cat("XGBoost Accuracy:", round(xgb_accuracy, 4), "\n")
+cat("XGBoost Accuracy (post-Tuning):", round(xgb_accuracy_tuned, 4), "\n")
+
+xgb_fnr_tuned <- calculate_fnr(xgb_confusion_matrix_tuned)
+cat("XGBoost False Negative Rate:", round(xgb_fnr, 4), "\n")
+cat("XGBoost False Negative Rate (post-Tuning):", round(xgb_fnr_tuned, 4), "\n")
+
+xgb_f1_score_tuned <- calculate_f1_score(xgb_confusion_matrix_tuned)
+cat("XGBoost F1 Score:", round(xgb_f1_score, 4), "\n")
+cat("XGBoost F1 Score (post-Tuning):", round(xgb_f1_score_tuned, 4), "\n")
+```
+
+
+
 ## Final Comparison
 ### Recall Precision Plot
 ```{r}
 plot_data <- data.frame(recall = numeric(), precision = numeric(), model = character())
 
 # Function to calculate precision and recall
-precision_recall <- function(probs, labels, model_name) {
+calculate_precision_recall <- function(probs, labels, model_name) {
   roc_obj <- roc(labels, probs)
   pr_data <- coords(roc_obj, x = "all", ret = c("recall", "precision"), transpose = FALSE)
+  
+  # if (model_name == "Decision Tree") {
+  #   # Replace NaN precision values with zero
+  #   pr_data$precision[is.nan(pr_data$precision)] <- 1
+  # }
+  
   data.frame(Recall = pr_data$recall, Precision = pr_data$precision, Model = model_name)
 }
 
-# Model 1: Decision Tree
+# Model 1: Logistic Regression
+logit_pr <- calculate_precision_recall(logit_predictions_prob, test_data$will_default, "Logistic Regression")
+plot_data <- rbind(plot_data, logit_pr)
+
+# Model 2: Decision Tree
 tree_pr <- calculate_precision_recall(tree_predictions, test_data$will_default, "Decision Tree")
 plot_data <- rbind(plot_data, tree_pr)
 
-# Model 2: Random Forest
-rf_pr <- calculate_precision_recall(rf_predictions, test_data$will_default, "Random Forest")
+# Model 3: Random Forest
+rf_pr <- calculate_precision_recall(rf_predictions_prob, test_data$will_default, "Random Forest")
 plot_data <- rbind(plot_data, rf_pr)
 
-# Model 3: LASSO
-lasso_plot <- calculate_precision_recall(as.numeric(lasso_predictions), y_test, "LASSO")
+# Model 4: LASSO
+lasso_pr <- calculate_precision_recall(lasso_predictions_prob, y_test, "LASSO")
 plot_data <- rbind(plot_data, lasso_pr)
 
-# Model 4: Ridge
-ridge_plot <- calculate_precision_recall(as.numeric(ridge_predictions), y_test, "Ridge")
+# Model 5: Ridge
+ridge_pr <- calculate_precision_recall(ridge_predictions_prob , y_test, "Ridge")
 plot_data <- rbind(plot_data, ridge_pr)
+
+# Model 6: XGBoost
+xgb_pr <- calculate_precision_recall(xgboost_pred_tuned_prob , y_test, "XGBoost")
+plot_data <- rbind(plot_data, xgb_pr)
 
 ggplot(plot_data, aes(x = Recall, y = Precision, color = Model)) +
   geom_line() +
@@ -306,10 +500,12 @@ results_table <- data.frame(
 )
 
 models <- list(
-  list(name = "Decision Tree", predictions = predict(baseline_tree, test_data, type = "class")),
+  list(name = "Logistic Regression", predictions = logit_predictions),
+  list(name = "Decision Tree", predictions = predict(decision_tree, test_data, type = "class")),
   list(name = "Random Forest", predictions = predict(rf, test_data, type = "class")),
   list(name = "LASSO", predictions = predict(lasso_model, x_test, type = "class")),
-  list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class"))
+  list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class")),
+  list(name = "XGBoost", predictions = xgboost_pred_tuned)
 )
 
 # Loop through each model, calculate metrics, and add results to  table
