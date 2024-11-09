@@ -18,9 +18,17 @@ library(pROC)
 library(caret)
 library(glmnet)
 library(xgboost)
+library(ParBayesianOptimization)
+library(doParallel)
 
 data <- readRDS("../data/combined_data.rds")
 ```
+
+```{r}
+# Encode `purpose` column
+data$purpose = as.numeric(as.factor(data$purpose))
+```
+
 
 ## Training/Test Split
 ```{r}
@@ -52,6 +60,7 @@ cat("Train size: ", nrow(train_data), "\n")
 cat("Test size: ", nrow(test_data), "\n")
 
 ```
+
 
 ## Calculation metrics
 Below are the functions used to calculate the metrics
@@ -204,7 +213,8 @@ We can see that the class specific error rate stabilizes at around 400 trees. Th
 ### Prediction
 ```{r}
 # Predict on test data
-rf_predictions <- predict(rf, test_data, type = "prob")[,2]
+rf_predictions_prob <- predict(rf, test_data, type = "prob")[,2]
+rf_predictions <- round(rf_predictions_prob)
 ```
 
 ### Metrics
@@ -299,8 +309,133 @@ cat("Ridge F1 Score:", round(ridge_f1_score, 4), "\n")
 
 ## XGBoost
 ```{r}
+dtrain <- xgb.DMatrix(data=data.matrix(train_data[, -21]),
+                      label=as.numeric(train_data$will_default)-1
+                      )
 
+dtest <- xgb.DMatrix(data=data.matrix(test_data[, -21]),
+                      label=as.numeric(test_data$will_default)-1
+                      )
 ```
+
+First, we fit a base XGBoost model so we can compare our pre- and post-tuning performance
+```{r}
+xgboost.fit_base <- xgboost(data = dtrain,
+                            nrounds=100,
+                            objective='binary:logistic')
+
+xgboost_pred_prob <- predict(xgboost.fit_base, dtest)
+xgboost_pred <- round(xgboost_pred_prob)
+
+
+xgb_confusion_matrix <- table(test_data$will_default, xgboost_pred)
+cat("XGBoost Confusion Matrix:\n")
+print(xgb_confusion_matrix)
+
+xgb_accuracy <- calculate_accuracy(xgb_confusion_matrix)
+cat("XGBoost Accuracy:", round(xgb_accuracy, 4), "\n")
+
+xgb_fnr <- calculate_fnr(xgb_confusion_matrix)
+cat("XGBoost False Negative Rate:", round(xgb_fnr, 4), "\n")
+
+xgb_f1_score <- calculate_f1_score(xgb_confusion_matrix)
+cat("XGBoost F1 Score:", round(xgb_f1_score, 4), "\n")
+```
+
+Now, we can try tuning an XGBoost model. Here, we attempt to use the Bayesian Optimization method; it should ideally be much faster than a standard grid or randomized search as it targets areas of the parameter space with the highest likelihood of improvement.
+
+```{r}
+# Bayes Optimization of XGBoost hyperparameters  by maximizing area under precision-recall curve
+score = function(max_depth, eta, gamma, min_child_weight, subsample, colsample_bytree) {
+  params = list(max_depth = max_depth,
+                eta = eta,
+                gamma = gamma,
+                min_child_weight = min_child_weight, 
+                subsample = subsample, 
+                colsample_bytree = colsample_bytree,
+                booster = "gbtree", 
+                objective = "binary:logistic", 
+                eval_metric = "aucpr", 
+                verbose = 1)
+  
+  set.seed(42)
+  crossval.xgb = xgb.cv(params = params, 
+                        data = dtrain, 
+                        nrounds = 100, 
+                        prediction = TRUE, 
+                        early_stopping_rounds = 10, 
+                        nfold = 3, 
+                        maximize = TRUE)
+  
+  return(list(Score = max(crossval.xgb$evaluation_log$test_aucpr_mean), nrounds = crossval.xgb$best_iteration))
+}
+
+# We specify the upper and lower bounds for each hyperparameter tuning range
+params_bounds = list(max_depth = c(3L, 9L),
+                     eta = c(0.1, 0.3),
+                     gamma = c(0, 1),
+                     min_child_weight = c(1, 5),
+                     subsample = c(0.7, 1),
+                     colsample_bytree = c(0.7, 1))
+
+
+# cluster = makeCluster(detectCores()/2)
+# registerDoParallel(cluster)
+# clusterExport(cluster, c('train_data', 'params_bounds', 'dtrain'))
+# clusterEvalQ(cluster, expr = {library(xgboost)})
+
+
+# Opt for 5 epochs of tuning
+params_opt = bayesOpt(FUN = score, bounds = params_bounds, initPoints = 8, iters.n = 5)
+
+# stopCluster(cluster)
+# registerDoSEQ()
+
+params = list(max_depth = getBestPars(params_opt)$max_depth,
+              eta = getBestPars(params_opt)$eta,
+              gamma = getBestPars(params_opt)$gamma,
+              min_child_weight = getBestPars(params_opt)$min_child_weight,
+              subsample = getBestPars(params_opt)$subsample,
+              colsample_bytree = getBestPars(params_opt)$colsample_bytree,
+              booster = "gbtree", 
+              objective = "binary:logistic", 
+              eval_metric = "aucpr", 
+              scale_pos_weight = weights, 
+              verbose = 0)
+
+nrounds = params_opt$scoreSummary[which(params_opt$scoreSummary$Score == max(params_opt$scoreSummary$Score))]$nrounds[1]
+```
+```{r}
+# Generate predictions using the parameters obtained from tuning
+watchlist = list(train = dtrain, test = dtest)
+xgboost.fit_tuned = xgb.train(params = params, 
+                                 data = dtrain,
+                                 nrounds = nrounds,
+                                 watchlist = watchlist,
+                                 early_stopping_rounds = 10,
+                                 print_every_n = 10)
+set.seed(123)
+xgboost_pred_tuned_prob = predict(xgboost.fit_tuned, dtest)
+xgboost_pred_tuned = round(xgboost_pred_tuned_prob)
+```
+```{r}
+xgb_confusion_matrix_tuned <- table(test_data$will_default, xgboost_pred_tuned)
+cat("XGBoost Confusion Matrix:\n")
+print(xgb_confusion_matrix_tuned)
+
+xgb_accuracy_tuned <- calculate_accuracy(xgb_confusion_matrix_tuned)
+cat("XGBoost Accuracy:", round(xgb_accuracy, 4), "\n")
+cat("XGBoost Accuracy (post-Tuning):", round(xgb_accuracy_tuned, 4), "\n")
+
+xgb_fnr_tuned <- calculate_fnr(xgb_confusion_matrix_tuned)
+cat("XGBoost False Negative Rate:", round(xgb_fnr, 4), "\n")
+cat("XGBoost False Negative Rate (post-Tuning):", round(xgb_fnr_tuned, 4), "\n")
+
+xgb_f1_score_tuned <- calculate_f1_score(xgb_confusion_matrix_tuned)
+cat("XGBoost F1 Score:", round(xgb_f1_score, 4), "\n")
+cat("XGBoost F1 Score (post-Tuning):", round(xgb_f1_score_tuned, 4), "\n")
+```
+
 
 
 ## Final Comparison
@@ -330,7 +465,7 @@ tree_pr <- calculate_precision_recall(tree_predictions, test_data$will_default, 
 plot_data <- rbind(plot_data, tree_pr)
 
 # Model 3: Random Forest
-rf_pr <- calculate_precision_recall(rf_predictions, test_data$will_default, "Random Forest")
+rf_pr <- calculate_precision_recall(rf_predictions_prob, test_data$will_default, "Random Forest")
 plot_data <- rbind(plot_data, rf_pr)
 
 # Model 4: LASSO
@@ -340,6 +475,10 @@ plot_data <- rbind(plot_data, lasso_pr)
 # Model 5: Ridge
 ridge_pr <- calculate_precision_recall(ridge_predictions_prob , y_test, "Ridge")
 plot_data <- rbind(plot_data, ridge_pr)
+
+# Model 6: XGBoost
+xgb_pr <- calculate_precision_recall(xgboost_pred_tuned_prob , y_test, "XGBoost")
+plot_data <- rbind(plot_data, xgb_pr)
 
 ggplot(plot_data, aes(x = Recall, y = Precision, color = Model)) +
   geom_line() +
@@ -361,10 +500,12 @@ results_table <- data.frame(
 )
 
 models <- list(
-  list(name = "Decision Tree", predictions = predict(baseline_tree, test_data, type = "class")),
+  list(name = "Logistic Regression", predictions = logit_predictions),
+  list(name = "Decision Tree", predictions = predict(decision_tree, test_data, type = "class")),
   list(name = "Random Forest", predictions = predict(rf, test_data, type = "class")),
   list(name = "LASSO", predictions = predict(lasso_model, x_test, type = "class")),
-  list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class"))
+  list(name = "Ridge", predictions = predict(ridge_model, x_test, type = "class")),
+  list(name = "XGBoost", predictions = xgboost_pred_tuned)
 )
 
 # Loop through each model, calculate metrics, and add results to  table
