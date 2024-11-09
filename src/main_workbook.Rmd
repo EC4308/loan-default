@@ -29,7 +29,6 @@ data <- readRDS("../data/combined_data.rds")
 data$purpose = as.numeric(as.factor(data$purpose))
 ```
 
-
 ## Training/Test Split
 ```{r}
 # Set seed
@@ -51,16 +50,64 @@ test_indices <- setdiff(seq_len(n), train_indices)
 train_data <- data[train_indices, ]
 test_data <- data[test_indices, ]
 
-# Replace NA values with 0 in both train and test datasets
-train_data <- train_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
-test_data <- test_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
-
 #Check the sizes of each set
 cat("Train size: ", nrow(train_data), "\n")
 cat("Test size: ", nrow(test_data), "\n")
-
 ```
 
+### Lending Club Issued Loans Grading System
+In this code chunk, we discover how successful Lending Club's internal ratings is at predicting default.
+We make the assumption that Lending Club predicts that the loan will not be defaulted when a rating of A to C is given, while a loan is predicted to be defaulted when a rating of D to G is given. From this, we can build a confusion matrix to find the recall and F1 score of their current internal metric.
+```{r}
+# Group by 'sub_grade' and count the number of defaults
+default_counts = test_data %>%
+  select(grade,will_default) %>%
+  group_by(grade, will_default) %>%
+  summarize(count = n(), .groups = "drop") %>% 
+  pivot_wider(names_from = will_default, values_from = count, values_fill = 0) %>%
+  rename(defaulters = `1`, non_defaulters = `0`) %>%
+  mutate(
+    predicted_default = ifelse(grepl("^[A-C]", grade), "predicted_non_default", "predicted_default")
+  )
+
+confusion_matrix <- default_counts %>%
+  group_by(predicted_default) %>%
+  summarize(
+    TP = sum(ifelse(predicted_default == "predicted_default", defaulters, 0)),  # True Positives
+    FP = sum(ifelse(predicted_default == "predicted_default", non_defaulters, 0)),  # False Positives
+    TN = sum(ifelse(predicted_default == "predicted_non_default", non_defaulters, 0)),  # True Negatives
+    FN = sum(ifelse(predicted_default == "predicted_non_default", defaulters, 0))   # False Negatives
+  ) %>%
+  summarize(
+    TP = sum(TP),
+    FP = sum(FP),
+    TN = sum(TN),
+    FN = sum(FN)
+  )
+
+# Calculate recall and F1 score
+recall <- confusion_matrix$TP / (confusion_matrix$TP + confusion_matrix$FN)
+precision <- confusion_matrix$TP / (confusion_matrix$TP + confusion_matrix$FP)
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Display the confusion matrix
+confusion_matrix_df <- data.frame(
+  Prediction = c("Predicted Default", "Predicted Non-Default"),
+  Actual_Default = c(as.numeric(confusion_matrix$TP), as.numeric(confusion_matrix$FN)),
+  Actual_Non_Default = c(as.numeric(confusion_matrix$FP), as.numeric(confusion_matrix$TN))
+)
+
+print(confusion_matrix_df)
+
+# Output results
+list(recall = recall, F1_score = F1_score)
+```
+
+```{r}
+# Replace NA values with 0 in both train and test datasets and remove the grade column, which was used to build the confusion matrix for the grading system but not needed for the ML models
+train_data <- train_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .))) %>% select(-grade)
+test_data <- test_data %>% mutate(across(everything(), ~ ifelse(is.na(.), 0, .))) %>% select(-grade)
+```
 
 ## Calculation metrics
 Below are the functions used to calculate the metrics
@@ -104,7 +151,6 @@ calculate_f1_score <- function(confusion_matrix) {
   f1_score <- 2 * (precision * recall) / (precision + recall)
   return(f1_score)
 }
-
 ```
 
 ## Baseline Model - Logistic Regression
