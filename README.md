@@ -68,11 +68,14 @@ Before running the project, make sure to install the following R packages on you
 ```r
 install.packages(c("tidyverse", "jsonlite", "lubridate", "zoo", "rpart", 
                    "rpart.plot", "randomForest", "pROC", "caret", "glmnet", 
-                   "xgboost", "ParBayesianOptimization", "doParallel"))
+                   "xgboost", "ParBayesianOptimization", "doParallel")) '''r
 
 Feel free to reach out if you encounter any issues or have questions about the setup!
 
 
+Authors: Brandon, Zhan Heng, Li Xuan, Wan Ting, Yi han
+Special Thanks to Prof Denis for his guidance. 
+Last Updated: 9 Nov 2024
 
 
 
