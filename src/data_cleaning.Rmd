@@ -260,6 +260,23 @@ table(combined_data$will_default)
 ```
 
 ## EDA
+
+### Interest Rate Spread
+We theorize that the interest rate would likely be one of, if not the most important variable in predicting loan default probability. It is likely that a loan or borrower deemed to be "risky" will likely be charged a higher interest on their loan as a premium. To confirm this, we ought to examine the interest rates between loans of different grades.
+```{r}
+combined_data %>%
+  group_by(grade) %>%
+  summarise(
+    mean_int_rate_premium = round(mean(spread, na.rm = TRUE), 2),
+    mean_loan_amount = round(mean(loan_amnt, na.rm = TRUE), 2),
+    mean_installment = round(mean(installment, na.rm = TRUE), 2),
+    num_loans = n(),
+    percent_defaulted = round(mean(will_default) * 100, 1)
+  )
+```
+
+
+
 ### Employment Length
 ```{r}
 combined_data %>%
