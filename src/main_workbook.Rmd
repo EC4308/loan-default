@@ -450,6 +450,13 @@ xgboost_pred_tuned = round(xgboost_pred_tuned_prob)
 ```
 
 ```{r}
+# Feature importance plot for XGBoost
+importance_matrix = xgb.importance(colnames(dtrain), model = xgboost.fit_tuned)
+xgb.plot.importance(importance_matrix)
+```
+
+
+```{r}
 xgb_confusion_matrix_tuned <- table(test_data$will_default, xgboost_pred_tuned)
 cat("XGBoost Confusion Matrix:\n")
 print(xgb_confusion_matrix_tuned)
